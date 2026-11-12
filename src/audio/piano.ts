@@ -82,7 +82,7 @@ export async function createPianoSession(signal: AbortSignal): Promise<PianoSess
     timers.add(timer)
   }
   const wait = (ms: number) => abortable(new Promise<void>((resolve) => at(ms, resolve)), signal)
-  const note = (name: string, ms: number, time: number) => {
+  const note = (name: string, ms: number, time: number): Promise<void> => {
     signal.throwIfAborted()
     if (disposed) throw new Error('Piano session has ended')
     const midi = nameToMidi(name)
@@ -99,37 +99,48 @@ export async function createPianoSession(signal: AbortSignal): Promise<PianoSess
     Tone.connect(source, envelope)
     const voice = { source, envelope }
     voices.add(voice)
-    source.onended = () => {
-      voices.delete(voice)
-      source.disconnect()
-      envelope.dispose()
-    }
+    const ended = new Promise<void>((resolve) => {
+      source.onended = () => {
+        voices.delete(voice)
+        source.disconnect()
+        envelope.dispose()
+        resolve()
+      }
+    })
     envelope.gain.setValueAtTime(1, time)
     // Match Sampler's zero attack, exponential one-second release envelope.
     envelope.gain.targetRampTo(0, 1, time + ms / 1000)
     source.start(time, 0)
     source.stop(time + ms / 1000 + 1)
-
+    return ended
   }
 
   return {
     dispose,
     async playNote(name, ms) {
-      note(name, ms, Tone.now() + 0.02)
+      void note(name, ms, Tone.now() + 0.02)
       await wait(ms + 60)
     },
     playGraph(s, onNote) {
       const t0 = Tone.now() + 0.05
+      const ended: Promise<void>[] = []
       for (const n of s.notes) {
-        note(n.name, n.durationMs, t0 + n.startMs / 1000)
+        ended.push(note(n.name, n.durationMs, t0 + n.startMs / 1000))
         // Keep existing callback timing; coordinate/timing accuracy is a later PR.
         at(Math.max(0, (t0 - Tone.now()) * 1000 + n.startMs), () => onNote(n.index))
       }
-      return wait(Math.max(0, (t0 - Tone.now()) * 1000 + s.durationMs)).then(() => {
-        // Natural completion retains the original release tail. Stop/unmount still
-        // owns and disconnects these voices immediately during that tail.
-        at(1200, dispose)
+      // Completion requires the audio-clock endpoint AND naturally ended graph
+      // voices (including their existing release tails), not just UI timers.
+      // Recheck the clock because a suspended context does not advance with time.
+      const timelineEnd = new Promise<void>((resolve) => {
+        const check = () => {
+          const remaining = (t0 + s.durationMs / 1000 - Tone.immediate()) * 1000
+          if (remaining <= 0) resolve()
+          else at(Math.max(1, Math.min(remaining, 100)), check)
+        }
+        check()
       })
+      return abortable(Promise.all([timelineEnd, ...ended]), signal).then(() => dispose())
     },
   }
 }

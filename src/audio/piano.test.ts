@@ -3,13 +3,13 @@ import { sonify } from './sonification.ts'
 import { GRAPHS } from '../data/graphs.ts'
 
 const audio = vi.hoisted(() => ({
-  start: vi.fn(), decode: vi.fn(), sources: [] as { playbackRate: { value: number }; disconnect: ReturnType<typeof vi.fn>; start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }[],
+  clock: 1, start: vi.fn(), decode: vi.fn(), sources: [] as { onended: null | (() => void); playbackRate: { value: number }; disconnect: ReturnType<typeof vi.fn>; start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }[],
   outputs: [] as { disconnect: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn>; gain: { setValueAtTime: ReturnType<typeof vi.fn>; cancelScheduledValues: ReturnType<typeof vi.fn> } }[],
 }))
 vi.mock('tone', () => ({
   start: audio.start,
   now: () => 1.1,
-  immediate: () => 1,
+  immediate: () => audio.clock,
   getContext: () => ({
     decodeAudioData: audio.decode,
     createBufferSource: () => {
@@ -34,6 +34,7 @@ let fetchMock: ReturnType<typeof vi.fn>
 beforeEach(() => {
   vi.resetModules()
   vi.useFakeTimers()
+  audio.clock = 1
   audio.start.mockReset().mockResolvedValue(undefined)
   audio.decode.mockReset().mockResolvedValue({ duration: 10 })
   audio.sources.length = 0
@@ -128,15 +129,39 @@ describe('session-owned piano', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('keeps natural release tails but eventually disposes their nodes', async () => {
+  it('completes only after the audio timeline and every graph voice end naturally', async () => {
     const { createPianoSession } = await import('./piano.ts')
     const piano = await createPianoSession(new AbortController().signal)
-    const done = piano.playGraph(s, vi.fn())
-    await vi.advanceTimersByTimeAsync(s.durationMs + 50)
+    let completed = false
+    const done = piano.playGraph(s, vi.fn()).then(() => { completed = true })
+    // Wall time alone must not complete a suspended/lagging audio context.
+    await vi.advanceTimersByTimeAsync(s.durationMs + 200)
+    expect(completed).toBe(false)
+    audio.clock = 1.15 + s.durationMs / 1000
+    await vi.advanceTimersByTimeAsync(100)
+    expect(completed).toBe(false) // the final release tail is still sounding
+    for (const source of audio.sources.slice(0, -1)) source.onended?.()
+    await Promise.resolve()
+    expect(completed).toBe(false)
+    audio.sources.at(-1)?.onended?.()
     await done
-    expect(audio.outputs[0].dispose).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(1200)
+    expect(completed).toBe(true)
     expect(audio.outputs[0].dispose).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('does not complete before the nominal graph endpoint even if samples end early', async () => {
+    const { createPianoSession } = await import('./piano.ts')
+    const piano = await createPianoSession(new AbortController().signal)
+    let completed = false
+    const done = piano.playGraph(s, vi.fn()).then(() => { completed = true })
+    for (const source of audio.sources) source.onended?.()
+    await vi.advanceTimersByTimeAsync(100)
+    expect(completed).toBe(false)
+    audio.clock = 1.15 + s.durationMs / 1000
+    await vi.advanceTimersByTimeAsync(100)
+    await done
+    expect(completed).toBe(true)
     expect(vi.getTimerCount()).toBe(0)
   })
 

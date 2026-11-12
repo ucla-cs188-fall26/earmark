@@ -7,12 +7,13 @@
  * TODO (Person 4): persist progress in localStorage, limit replays per
  * question (and record the count), keyboard shortcuts (space = play).
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react'
 import { buildPreamble, sonify } from '../audio/sonification.ts'
 import { usePlayer } from '../audio/usePlayer.ts'
 import { getGraph, xTickLabel } from '../data/graphs.ts'
 import { QUESTIONS, TEST_QUESTIONS } from '../data/questions.ts'
 import { checkAnswer, orderQuestions, scoreAnswers } from '../quiz/quiz.ts'
+import { INITIAL_LISTENING, listeningReducer } from '../quiz/listening.ts'
 import type { AnswerRecord, LessonPhase } from '../types.ts'
 import { GraphReveal } from './GraphReveal.tsx'
 import { ProgressBar } from './ProgressBar.tsx'
@@ -26,7 +27,14 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
   const [questions, setQuestions] = useState(() => orderQuestions(questionBank))
   const [phase, setPhase] = useState<LessonPhase>({ kind: 'intro' })
   const [answers, setAnswers] = useState<AnswerRecord[]>([])
-  const [hasListened, setHasListened] = useState(false)
+  const [listening, dispatchListening] = useReducer(listeningReducer, INITIAL_LISTENING)
+  const hasListened = listening.completed
+  const instructionsId = useId()
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
   const player = usePlayer()
 
   const question = phase.kind === 'question' ? questions[phase.index] : null
@@ -38,21 +46,25 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
     player.stop()
     setQuestions(orderQuestions(questionBank))
     setAnswers([])
-    setHasListened(false)
+    dispatchListening({ type: 'reset' })
     setPhase({ kind: 'intro' })
   }
 
   const goToQuestion = (index: number) => {
     player.stop()
-    setHasListened(false)
+    dispatchListening({ type: 'reset' })
     if (index >= questions.length) setPhase({ kind: 'results' })
     else setPhase({ kind: 'question', index, stage: 'listen' })
   }
 
-  const play = async () => {
+  const play = () => {
     if (!sonification || !graph) return
-    const started = await player.play(sonification, buildPreamble(sonification, graph))
-    if (started) setHasListened(true)
+    const generation = listening.generation
+    dispatchListening({ type: 'started', generation })
+    const request = player.play(sonification, buildPreamble(sonification, graph))
+    void request.finished.then((outcome) => {
+      if (mounted.current) dispatchListening({ type: 'settled', generation, outcome: outcome.kind })
+    })
   }
 
   /** Stop, then say where we were: "Apr, 14.8". */
@@ -66,7 +78,7 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
   }
 
   const answer = (chosenIndex: number) => {
-    if (!question || phase.kind !== 'question') return
+    if (!question || phase.kind !== 'question' || !hasListened || current) return
     player.stop()
     setAnswers((prev) => [...prev, checkAnswer(question, chosenIndex)])
     setPhase({ ...phase, stage: 'reveal' })
@@ -90,17 +102,23 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
 
       <div className="controls">
         <button type="button" onClick={busy ? stopAndAnnounce : () => void play()}>
-          {busy ? 'Stop' : hasListened ? 'Replay' : 'Play'}
+          {busy ? 'Stop' : listening.attempted ? 'Replay' : 'Play'}
         </button>
-        {!hasListened && phase.stage !== 'reveal' && <span className="hint">Listen first, then answer.</span>}
       </div>
 
+      <p id={instructionsId} className="hint" role="status">
+        {current ? 'Answer recorded. Continue to the next question when ready.'
+          : hasListened ? 'Graph playback complete. You can answer now or replay the graph.'
+          : listening.attempted && !busy ? 'Playback did not complete. Replay the entire graph to answer.'
+          : 'Listen to the entire graph before answering. Answers become available when playback finishes.'}
+      </p>
       {player.error && <p role="alert">{player.error}</p>}
 
       <QuestionCard
         question={question}
         chosenIndex={current?.chosenIndex ?? null}
         disabled={!hasListened}
+        instructionsId={instructionsId}
         onAnswer={answer}
       />
 

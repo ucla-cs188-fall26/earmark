@@ -33,9 +33,9 @@ describe('playback generations', () => {
     const oldSignal = deps.create.mock.calls[0][0] as AbortSignal
     player.stop()
     expect(oldSignal.aborted).toBe(true)
-    expect(await player.play(s)).toBe(true)
+    expect((await player.play(s).scheduled).kind).toBe('scheduled')
     first.resolve(old)
-    expect(await a).toBe(false)
+    expect((await a.finished).kind).toBe('cancelled')
     expect(old.dispose).toHaveBeenCalledOnce()
     expect(old.playGraph).not.toHaveBeenCalled()
     expect(player.getSnapshot().status).toBe('playing')
@@ -52,9 +52,9 @@ describe('playback generations', () => {
     await vi.waitFor(() => expect(deps.speak).toHaveBeenCalledOnce())
     const signal = deps.speak.mock.calls[0][1] as AbortSignal
     player.stop()
-    await player.play(s)
+    await player.play(s).scheduled
     speech.resolve()
-    expect(await first).toBe(false)
+    expect((await first.finished).kind).toBe('cancelled')
     expect(signal.aborted).toBe(true)
     expect(old.playNote).not.toHaveBeenCalled()
     expect(old.playGraph).not.toHaveBeenCalled()
@@ -72,7 +72,7 @@ describe('playback generations', () => {
     await vi.waitFor(() => expect(old.playNote).toHaveBeenCalledOnce())
     player.stop()
     reference.resolve()
-    expect(await pending).toBe(false)
+    expect((await pending.finished).kind).toBe('cancelled')
     expect(deps.speak).not.toHaveBeenCalled()
     expect(old.playGraph).not.toHaveBeenCalled()
   })
@@ -81,10 +81,10 @@ describe('playback generations', () => {
     const old = piano(), next = piano()
     deps.create.mockResolvedValueOnce(old).mockResolvedValueOnce(next)
     const player = new PlaybackController()
-    await player.play(s)
+    await player.play(s).scheduled
     const oldNote = old.playGraph.mock.calls[0][1] as (index: number) => void
     player.stop()
-    await player.play(s)
+    await player.play(s).scheduled
     const nextNote = next.playGraph.mock.calls[0][1] as (index: number) => void
     nextNote(3)
     oldNote(40)
@@ -103,7 +103,7 @@ describe('playback generations', () => {
     const player = new PlaybackController()
     const listener = vi.fn()
     const unsubscribe = player.subscribe(listener)
-    await player.play(s)
+    await player.play(s).scheduled
     const signal = deps.create.mock.calls[0][0] as AbortSignal
     unsubscribe()
     player.stop() // usePlayer's effect cleanup
@@ -113,7 +113,7 @@ describe('playback generations', () => {
     expect(first.dispose).toHaveBeenCalledOnce()
     expect(signal.aborted).toBe(true)
     expect(listener).toHaveBeenCalledTimes(count)
-    expect(await player.play(s)).toBe(true)
+    expect((await player.play(s).scheduled).kind).toBe('scheduled')
     player.stop()
   })
 
@@ -121,9 +121,9 @@ describe('playback generations', () => {
     const next = piano()
     deps.create.mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce(next)
     const player = new PlaybackController()
-    expect(await player.play(s)).toBe(false)
+    expect((await player.play(s).finished).kind).toBe('failed')
     expect(player.getSnapshot()).toMatchObject({ status: 'error', activeIndex: -1, error: expect.stringContaining('retry') })
-    expect(await player.play(s)).toBe(true)
+    expect((await player.play(s).scheduled).kind).toBe('scheduled')
     expect(player.getSnapshot()).toEqual({ status: 'playing', activeIndex: -1, error: null })
     player.stop()
   })
@@ -133,7 +133,7 @@ describe('playback generations', () => {
     broken.playGraph.mockImplementation(() => { throw new Error('audio scheduling failed') })
     deps.create.mockResolvedValue(broken)
     const player = new PlaybackController()
-    expect(await player.play(s)).toBe(false)
+    expect((await player.play(s).finished).kind).toBe('failed')
     expect(player.getSnapshot().status).toBe('error')
     expect(broken.dispose).toHaveBeenCalledOnce()
   })
@@ -142,8 +142,8 @@ describe('playback generations', () => {
     const old = piano(), next = piano()
     deps.create.mockResolvedValueOnce(old).mockResolvedValueOnce(next)
     const player = new PlaybackController()
-    await player.play(s)
-    await player.play(s)
+    await player.play(s).scheduled
+    await player.play(s).scheduled
     old.done.resolve()
     await Promise.resolve()
     expect(player.getSnapshot().status).toBe('playing')
@@ -155,9 +155,9 @@ describe('playback generations', () => {
     deps.create.mockReturnValueOnce(first.promise).mockResolvedValueOnce(piano())
     const player = new PlaybackController()
     const pending = player.play(s)
-    await player.play(s)
+    await player.play(s).scheduled
     first.reject(new Error('old network error'))
-    expect(await pending).toBe(false)
+    expect((await pending.finished).kind).toBe('cancelled')
     expect(player.getSnapshot().status).toBe('playing')
     player.stop()
   })
@@ -168,5 +168,92 @@ describe('playback generations', () => {
     const signal = deps.speak.mock.calls[0][1] as AbortSignal
     player.stop()
     expect(signal.aborted).toBe(true)
+  })
+})
+
+describe('explicit playback outcomes', () => {
+  it('distinguishes successful scheduling from natural completion', async () => {
+    const audio = piano()
+    deps.create.mockResolvedValue(audio)
+    const player = new PlaybackController()
+    const request = player.play(s)
+    let terminal: string | null = null
+    void request.finished.then((outcome) => { terminal = outcome.kind })
+    expect((await request.scheduled).kind).toBe('scheduled')
+    expect(player.getSnapshot().status).toBe('playing')
+    expect(terminal).toBeNull()
+    audio.done.resolve()
+    expect(await request.finished).toEqual({ kind: 'completed', sessionId: request.sessionId, graphId: s.graphId })
+    expect(player.getSnapshot().status).toBe('idle')
+    expect(audio.dispose).toHaveBeenCalledOnce()
+    player.stop()
+    expect((await request.finished).kind).toBe('completed')
+  })
+
+  it('settles cancellation immediately even when loading never resolves', async () => {
+    deps.create.mockReturnValue(new Promise(() => {}))
+    const player = new PlaybackController()
+    const request = player.play(s)
+    player.stop()
+    expect((await request.scheduled).kind).toBe('cancelled')
+    expect((await request.finished).kind).toBe('cancelled')
+  })
+
+  it('settles preamble cancellation without waiting for a missing speech end event', async () => {
+    deps.create.mockResolvedValue(piano())
+    deps.speak.mockReturnValue(new Promise(() => {}))
+    const player = new PlaybackController()
+    const request = player.play(s, [{ say: 'Axes' }])
+    await vi.waitFor(() => expect(deps.speak).toHaveBeenCalledOnce())
+    player.stop()
+    expect((await request.scheduled).kind).toBe('cancelled')
+    expect((await request.finished).kind).toBe('cancelled')
+  })
+
+  it('reports early Stop as cancelled after scheduling, even if an old end arrives', async () => {
+    const audio = piano()
+    deps.create.mockResolvedValue(audio)
+    const player = new PlaybackController()
+    const request = player.play(s)
+    await request.scheduled
+    player.stop()
+    audio.done.resolve()
+    expect((await request.finished).kind).toBe('cancelled')
+    expect(player.getSnapshot().status).toBe('idle')
+  })
+
+  it('reports loading failure without a scheduled or completed outcome', async () => {
+    deps.create.mockRejectedValue(new Error('network'))
+    const player = new PlaybackController()
+    const request = player.play(s)
+    expect((await request.scheduled).kind).toBe('failed')
+    expect((await request.finished).kind).toBe('failed')
+    expect(player.getSnapshot().status).toBe('error')
+  })
+
+  it('reports graph failure separately from its earlier scheduling success', async () => {
+    const audio = piano()
+    deps.create.mockResolvedValue(audio)
+    const player = new PlaybackController()
+    const request = player.play(s)
+    expect((await request.scheduled).kind).toBe('scheduled')
+    audio.done.reject(new Error('playback failed'))
+    expect((await request.finished).kind).toBe('failed')
+    expect(player.getSnapshot().status).toBe('error')
+  })
+
+  it('keeps replacement and unmount cancellations distinct from the new completion', async () => {
+    const old = piano(), next = piano()
+    deps.create.mockResolvedValueOnce(old).mockResolvedValueOnce(next)
+    const player = new PlaybackController()
+    const a = player.play(s)
+    await a.scheduled
+    const b = player.play(s)
+    await b.scheduled
+    old.done.resolve()
+    expect((await a.finished).kind).toBe('cancelled')
+    next.done.resolve()
+    expect((await b.finished).kind).toBe('completed')
+    expect(a.sessionId).not.toBe(b.sessionId)
   })
 })
