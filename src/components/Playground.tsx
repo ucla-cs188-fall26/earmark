@@ -1,3 +1,4 @@
+import { NarrationControls } from './NarrationControls.tsx'
 /**
  * Engine test page (#playground): pick any graph, play it, inspect the notes.
  * Not part of the lesson. Mostly useful for Person 2 while tuning the mapping.
@@ -51,6 +52,7 @@ export function Playground() {
       <section className="stage">
         <ProtocolSummary graph={series} sonification={sonification} />
         <LineChart series={series} activePosition={chartPosition(sonification, player.activeIndex, player.stoppedPosition)} />
+        <NarrationControls player={player} preamble={preamble} />
         <StoppedPosition graph={series} position={player.stoppedPosition} />
         <DataTable graph={series} />
         {player.error && <p role="alert">{player.error}</p>}

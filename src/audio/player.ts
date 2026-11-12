@@ -1,5 +1,6 @@
 import type { PlaybackPosition, PreambleItem, Sonification } from '../types.ts'
-import { createPianoSession, type PianoSession } from './piano.ts'
+import { createPianoSession, createReferenceSession, type PianoSession } from './piano.ts'
+import { NarrationTransport, narrationSections, type NarrationState } from './narration.ts'
 import { speak } from './speech.ts'
 
 export interface PlaybackOutcome {
@@ -19,12 +20,14 @@ export interface PlayerSnapshot {
   status: PlayerStatus
   activeIndex: number
   error: string | null
+  narration?: NarrationState
   stoppedPosition: PlaybackPosition | null
 }
 interface Session {
   id: number
   abort: AbortController
   piano?: PianoSession
+  narration?: NarrationTransport
   settle?: (kind: PlaybackOutcome['kind']) => void
 }
 
@@ -59,7 +62,7 @@ export class PlaybackController {
     // Capture from the audio clock BEFORE abort disconnects/disposes the sources.
     const position = this.getPosition()
     this.cancel()
-    this.update({ status: 'idle', activeIndex: -1, error: null, stoppedPosition: position ?? this.snapshot.stoppedPosition })
+    this.update({ status: 'idle', activeIndex: -1, error: null, narration: undefined, stoppedPosition: position ?? this.snapshot.stoppedPosition })
     return position
   }
   reset = () => {
@@ -106,12 +109,19 @@ export class PlaybackController {
       }
       if (preamble) {
         this.update({ status: 'speaking' })
-        for (const item of preamble) {
-          signal.throwIfAborted()
-          if ('say' in item) await speak(item.say, signal)
-          else await session.piano.playNote(item.name, item.ms)
-          if (!this.current(session)) return
-        }
+        session.narration = new NarrationTransport(narrationSections(preamble), signal, async (items, childSignal) => {
+          const reference = await createReferenceSession(childSignal)
+          try {
+            for (const item of items) {
+              childSignal.throwIfAborted()
+              if ('say' in item) await speak(item.say, childSignal)
+              else await reference.playNote(item.name, item.ms)
+            }
+          } finally { reference.dispose() }
+        }, (narration) => { if (this.current(session)) this.update({ narration }) })
+        await session.narration.run()
+        if (!this.current(session)) return
+        this.update({ narration: undefined })
       }
       const done = session.piano.playGraph(s, (activeIndex) => {
         if (this.current(session)) this.update({ activeIndex })
@@ -127,6 +137,12 @@ export class PlaybackController {
       this.fail(session)
     }
   }
+  previousSection = () => this.session?.narration?.previous()
+  nextSection = () => this.session?.narration?.next()
+  replaySection = () => this.session?.narration?.replay()
+  pauseNarration = () => this.session?.narration?.pause()
+  resumeNarration = () => this.session?.narration?.resume()
+  skipIntroduction = () => this.session?.narration?.skip()
   /** Stop-position speech participates in the same replacement/unmount lifecycle. */
   announce = (text: string) => {
     const stoppedPosition = this.snapshot.stoppedPosition

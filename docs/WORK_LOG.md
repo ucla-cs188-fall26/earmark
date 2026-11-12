@@ -533,3 +533,19 @@ artifacts are outside the repository. These checks are single-engine interaction
 checks with mocked speech completion, not screen-reader/pronunciation testing or
 acoustic latency certification. Actual comparative study effects of shorter
 narration remain a research question.
+
+## Roadmap — Navigable graph narration
+
+Branch `feat/narration-navigation`, stacked on PR #6 (`120e6f8`). Narration is
+sectioned with its reference notes; previous/next/replay, pause/resume and skip
+cancel the old child session, including speech, reference voices and pending loads.
+Pause is section-level: resume restarts the current section, stated in the UI.
+The headed transcript remains available before/after narration. Skipping starts
+real graph audio and never settles its completion outcome early. Parent Stop and
+unmount abort paused waits and all child resources. Graph mapping/questions and
+full-listening eligibility are unchanged. Tests cover grouping, rapid replacement,
+pause/restart/skip and paused cleanup. All 113 tests, lint, typecheck, build and diff
+checks passed. In a fresh browser context with speech held by a mock, keyboard-native
+controls navigated/paused/resumed/replayed, skip left answers disabled, and only
+natural graph completion enabled answers. Real piano audio was used. This is not
+manual screen-reader verification; browser speech pronunciation remains untested.

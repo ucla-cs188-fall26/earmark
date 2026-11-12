@@ -13,6 +13,6 @@ export function usePlayer() {
     const position = controller.stop()
     if (position?.graphId === graph.id) controller.announce(describeStop(graph, position))
   }
-  return { ...snapshot, play: controller.play, stop: controller.stop, reset: controller.reset, stopAndAnnounce }
+  return { ...snapshot, play: controller.play, stop: controller.stop, reset: controller.reset, stopAndAnnounce, previousSection: controller.previousSection, nextSection: controller.nextSection, replaySection: controller.replaySection, pauseNarration: controller.pauseNarration, resumeNarration: controller.resumeNarration, skipIntroduction: controller.skipIntroduction }
 }
 export type Player = ReturnType<typeof usePlayer>
