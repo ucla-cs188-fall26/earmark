@@ -6,6 +6,7 @@
   --rule: #e4e4e0;
   --series: #2a78d6;
   --accent: #c2410c;
+  --success: #15803d;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -17,6 +18,7 @@
     --rule: #333331;
     --series: #3987e5;
     --accent: #fb923c;
+    --success: #4ade80;
   }
 }
 
@@ -92,7 +94,7 @@ button.secondary { background: transparent; color: var(--series); border: 1px so
 
 .reveal { margin: 24px 0; }
 .results .score { font-size: 32px; font-weight: 700; margin: 8px 0 16px; }
-.results .ok { color: #15803d; }
+.results .ok { color: var(--success); }
 .results .miss { color: var(--accent); }
 .order li { margin-bottom: 4px; }
 .order strong { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
@@ -116,3 +118,16 @@ summary { cursor: pointer; padding: 8px 0; }
   .graph-information dl { grid-template-columns: 1fr; }
   .graph-information dd { margin-bottom: 12px; }
 }
+
+/* Programmatic screen headings remain visible without entering the Tab sequence. */
+[tabindex="-1"]:focus { outline: 3px solid var(--accent); outline-offset: 3px; }
+progress { max-width: 100%; }
+@media (prefers-reduced-motion: reduce) { .progress__fill { transition: none; } }
+@media (forced-colors: active) { button, .choice, .graph-information { border: 1px solid ButtonText; } }
+
+/* Allow grid/table wrappers and enlarged controls to shrink within the viewport. */
+.details > *, .controls > * { min-width: 0; max-width: 100%; }
+fieldset { min-inline-size: 0; max-width: 100%; }
+select { max-width: 100%; }
+.nav { flex-wrap: wrap; }
+p, dd, legend { overflow-wrap: anywhere; }

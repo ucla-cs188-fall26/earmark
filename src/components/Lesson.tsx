@@ -1,3 +1,4 @@
+import { useScreenFocus } from '../accessibility/useScreenFocus.ts'
 import { GraphControls } from './GraphControls.tsx'
 import { NarrationControls } from './NarrationControls.tsx'
 /**
@@ -41,6 +42,8 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
     return () => { mounted.current = false }
   }, [])
   const player = usePlayer()
+  const screenKey = phase.kind === 'question' ? `${phase.index}:${phase.stage}` : phase.kind
+  useScreenFocus(screenKey, phase.kind === 'intro' ? '.intro > h2' : phase.kind === 'results' ? '.results > h2' : phase.stage === 'reveal' ? '.reveal h3' : '.lesson .graph-information h2')
 
   const question = phase.kind === 'question' ? questions[phase.index] : null
   const graph = question ? getGraph(question.graphId) : null
@@ -97,7 +100,7 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
       <ProgressBar current={phase.index + 1} total={questions.length} />
 
       <div className="controls">
-        <button type="button" onClick={busy ? () => player.stopAndAnnounce(graph) : () => void play()}>
+        <button data-main-playback type="button" onClick={busy ? () => player.stopAndAnnounce(graph) : () => void play()}>
           {busy ? 'Stop' : listening.attempted ? 'Replay' : 'Play'}
         </button>
       </div>
@@ -108,7 +111,7 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
           : listening.attempted && !busy ? 'Playback did not complete. Replay the entire graph to answer.'
           : 'Listen to the entire graph before answering. Answers become available when playback finishes.'}
       </p>
-      <GraphControls player={player} graph={graph} eligible={hasListened} requiresFullListening onReplay={() => void play()} />
+      <GraphControls player={player} sonification={sonification} graph={graph} eligible={hasListened} requiresFullListening onReplay={() => void play()} />
       <NarrationControls player={player} preamble={buildPreamble(sonification, graph)} />
       <StoppedPosition graph={graph} position={player.stoppedPosition} />
       {player.error && <p role="alert">{player.error}</p>}

@@ -53,7 +53,7 @@ export function Playground() {
       <section className="stage">
         <ProtocolSummary graph={series} sonification={sonification} />
         <LineChart series={series} activePosition={chartPosition(sonification, player.activeIndex, player.stoppedPosition)} />
-        <GraphControls player={player} graph={series} onReplay={() => { void player.play(sonification, speakPreamble ? preamble : undefined) }} />
+        <GraphControls player={player} sonification={sonification} graph={series} onReplay={() => { void player.play(sonification, speakPreamble ? preamble : undefined) }} />
       <NarrationControls player={player} preamble={preamble} />
         <StoppedPosition graph={series} position={player.stoppedPosition} />
         <DataTable graph={series} />

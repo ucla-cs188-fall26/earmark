@@ -1,3 +1,4 @@
+import { useControlFocus } from '../accessibility/useControlFocus.ts'
 import type { PreambleItem } from '../types.ts'
 import { narrationSections } from '../audio/narration.ts'
 import type { Player } from '../audio/usePlayer.ts'
@@ -6,8 +7,9 @@ export function NarrationControls({ player, preamble }: { player: Player; preamb
   const state = player.narration
   const sections = narrationSections(preamble)
   const active = player.status === 'speaking' && state && state.index < sections.length
+  const focus = useControlFocus(Boolean(active))
   const section = active ? sections[state.index] : null
-  return <section aria-label="Introduction navigation">
+  return <section aria-label="Introduction navigation" {...focus}>
     {active && section && <>
     <p role="status">{state.paused ? 'Introduction paused. Resume restarts this section.' : 'Introduction section'} {state.index + 1} of {state.sections.length}: {section.title}</p>
     <div className="controls">
