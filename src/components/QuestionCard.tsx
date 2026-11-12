@@ -41,7 +41,7 @@ export function QuestionCard({ question, chosenIndex, disabled = false, instruct
       {answered && (
         <p className="feedback" role="status">
           {chosenIndex === question.correctIndex ? 'Correct.' : 'Not quite.'}{' '}
-          {question.explanation ?? ''}
+          Your answer: {question.choices[chosenIndex!]}. Correct answer: {question.choices[question.correctIndex]}. {question.explanation ?? ''}
         </p>
       )}
     </fieldset>

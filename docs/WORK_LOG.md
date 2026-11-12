@@ -574,3 +574,29 @@ stale resumed loads, audio-clock offsets and Stop. In a fresh browser with mocke
 speech and real piano, pause and 1.5× playback worked; six forward seeks to the end
 left Test choices locked, while a fresh full replay unlocked them. This is browser
 interaction testing, not manual AT or physical audio-latency certification.
+
+## Roadmap — Accessible interactions
+
+Branch `fix/accessibility-interactions`, stacked on graph navigation. Screen
+transitions focus the new heading after browser hash navigation settles; a new
+question starts at its context heading and Tab reaches Play. Transient narration/
+graph controls return lost focus to stable Play/Stop without stealing focus from
+surviving controls. Activity titles/nav names, explicit chosen/correct feedback,
+question-position value text, a graph-position meter and restrained paused/playing
+status text improve nonvisual interpretation. Progress is position, not a claim
+that listening has completed. High-frequency note/coordinate updates are not live.
+
+Verified dark-mode success text previously fell below 4.5:1; a theme-specific color
+now passes normal-text AA contrast. Focus indicators, reduced-motion and forced-
+color support remain visible. Browser enlarged-text testing found grid/fieldset
+min-content overflow; wrappers and labels now shrink/wrap. At 320 CSS pixels and
+200% body text, document width stayed 320. This is text-resize testing, not a claim
+of testing every browser zoom/device combination. Browser heading focus, next-Tab
+Play, route titles and native control labels were checked. No unnamed buttons or
+unlabeled selects were found in the tested Playground state.
+
+All 124 tests, lint, types, build and diff checks passed. Automated regressions
+cover semantic progress, feedback withholding/text and real stylesheet contrast
+in both themes. Browser tests are automated interactions; VoiceOver/NVDA/JAWS were
+NOT manually tested. This targets WCAG 2.2 AA but does not certify whole-app
+conformance. Existing cancellation and eligibility tests remain passing.

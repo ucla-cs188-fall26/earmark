@@ -21,7 +21,7 @@ export function PlayerControls({ status, speakPreamble, onToggleSpeak, onPlay, o
   const busy = status !== 'idle' && status !== 'error'
   return (
     <div className="controls">
-      <button type="button" onClick={busy ? onStop : onPlay} aria-live="polite">
+      <button data-main-playback type="button" onClick={busy ? onStop : onPlay}>
         {busy ? `Stop (${LABEL[status]})` : LABEL.idle}
       </button>
       <label>
