@@ -1,108 +1,135 @@
 import * as Tone from 'tone'
 import type { Sonification } from '../types.ts'
-
-/**
- * Sampled piano playback for a Sonification.
- *
- * Uses the Salamander Grand Piano samples hosted by Tone.js. One sample every
- * minor third is enough; Tone.Sampler pitch-shifts the gaps.
- */
+import { nameToMidi } from './sonification.ts'
+import { abortable } from './cancellation.ts'
 
 const SAMPLE_BASE_URL = 'https://tonejs.github.io/audio/salamander/'
+const SAMPLE_NAMES = ['A0', 'C8', ...Array.from({ length: 7 }, (_, i) =>
+  ['C', 'D#', 'F#', 'A'].map((note) => `${note}${i + 1}`)).flat()]
+// Only decoded, immutable sample data is shared. Voices and output nodes never are.
+const sampleCache = new Map<string, AudioBuffer>()
 
-function sampleUrls(): Record<string, string> {
-  const urls: Record<string, string> = { A0: 'A0.mp3', C8: 'C8.mp3' }
-  for (let octave = 1; octave <= 7; octave++) {
-    urls[`C${octave}`] = `C${octave}.mp3`
-    urls[`D#${octave}`] = `Ds${octave}.mp3`
-    urls[`F#${octave}`] = `Fs${octave}.mp3`
-    urls[`A${octave}`] = `A${octave}.mp3`
+async function loadSamples(signal: AbortSignal): Promise<Map<number, AudioBuffer>> {
+  return new Map(await Promise.all(SAMPLE_NAMES.map(async (name) => {
+    let buffer = sampleCache.get(name)
+    if (!buffer) {
+      const response = await fetch(`${SAMPLE_BASE_URL}${name.replace('#', 's')}.mp3`, { signal })
+      if (!response.ok) throw new Error(`Piano sample request failed (${response.status})`)
+      buffer = await abortable(Tone.getContext().decodeAudioData(await response.arrayBuffer()), signal)
+      signal.throwIfAborted()
+      sampleCache.set(name, buffer)
+    }
+    return [nameToMidi(name), buffer] as const
+  })))
+}
+
+export interface PianoSession {
+  playNote: (name: string, ms: number) => Promise<void>
+  playGraph: (s: Sonification, onNote: (index: number) => void) => Promise<void>
+  dispose: () => void
+}
+
+/** One request owns every voice, timer and output node, including its preamble. */
+export async function createPianoSession(signal: AbortSignal): Promise<PianoSession> {
+  signal.throwIfAborted()
+  // Invoke start synchronously in the initiating user gesture, before narration.
+  const loading = new AbortController()
+  const loadingSignal = AbortSignal.any([signal, loading.signal])
+  const timeout = setTimeout(() => loading.abort(new Error('Piano loading timed out')), 30_000)
+  let samples: Map<number, AudioBuffer>
+  try {
+    await abortable(Tone.start(), loadingSignal)
+    samples = await loadSamples(loadingSignal)
+  } catch (error) {
+    loading.abort() // cancel sibling sample requests on the first failure
+    throw error
+  } finally {
+    clearTimeout(timeout)
   }
-  return urls
-}
+  signal.throwIfAborted()
+  const output = new Tone.Gain(1).toDestination()
+  const voices = new Set<{ source: AudioBufferSourceNode; envelope: Tone.Gain }>()
+  const timers = new Set<ReturnType<typeof setTimeout>>()
+  let disposed = false
 
-let samplerPromise: Promise<Tone.Sampler> | null = null
-
-/** Load (once) and return the piano sampler. Must be called after a user gesture. */
-export function loadPiano(): Promise<Tone.Sampler> {
-  if (!samplerPromise) {
-    samplerPromise = new Promise<Tone.Sampler>((resolve, reject) => {
-      const sampler = new Tone.Sampler({
-        urls: sampleUrls(),
-        baseUrl: SAMPLE_BASE_URL,
-        release: 1,
-        onload: () => resolve(sampler),
-        onerror: (err) => {
-          samplerPromise = null
-          reject(err)
-        },
-      }).toDestination()
-    })
-  }
-  return samplerPromise
-}
-
-/** Play one reference note now and resolve when it has sounded for `ms`. */
-export async function playNote(name: string, ms: number): Promise<void> {
-  await Tone.start()
-  const piano = await loadPiano()
-  piano.triggerAttackRelease(name, ms / 1000, Tone.now() + 0.02)
-  await new Promise((r) => setTimeout(r, ms + 60))
-}
-
-export interface Playback {
-  /** Stop all scheduled notes and callbacks immediately. */
-  stop: () => void
-  /** Resolves when the last note has finished. */
-  done: Promise<void>
-}
-
-export interface PlayCallbacks {
-  /** Fired (on the animation frame) when note `index` begins. */
-  onNote?: (index: number) => void
-  /** Fired when playback ends, whether naturally or via stop(). */
-  onEnd?: () => void
-}
-
-/**
- * Schedule every note in `s` starting now.
- *
- * UI callbacks use setTimeout rather than Tone.Draw because Draw runs on
- * requestAnimationFrame, which browsers pause in hidden tabs; the audio keeps
- * playing but the playhead (and the end-of-clip callback) would never fire.
- */
-export async function playSonification(s: Sonification, cb: PlayCallbacks = {}): Promise<Playback> {
-  await Tone.start()
-  const piano = await loadPiano()
-  const t0 = Tone.now() + 0.05
-  const timers: ReturnType<typeof setTimeout>[] = []
-  const at = (offsetMs: number, fn: () => void) => {
-    const delayMs = Math.max(0, (t0 - Tone.now()) * 1000 + offsetMs)
-    timers.push(setTimeout(fn, delayMs))
-  }
-
-  for (const n of s.notes) {
-    piano.triggerAttackRelease(n.name, n.durationMs / 1000, t0 + n.startMs / 1000)
-    at(n.startMs, () => cb.onNote?.(n.index))
-  }
-
-  let finished = false
-  let resolveDone!: () => void
-  const done = new Promise<void>((r) => (resolveDone = r))
-  const finish = () => {
-    if (finished) return
-    finished = true
+  const dispose = () => {
+    if (disposed) return
+    disposed = true
+    signal.removeEventListener('abort', dispose)
     timers.forEach(clearTimeout)
-    cb.onEnd?.()
-    resolveDone()
+    timers.clear()
+    // A hard output disconnect silences active AND future sources immediately.
+    // Do not depend on Sampler.releaseAll(): scheduled releases lose its handles.
+    output.gain.cancelScheduledValues(0)
+    output.gain.setValueAtTime(0, Tone.immediate())
+    output.disconnect()
+    for (const { source, envelope } of voices) {
+      source.onended = null
+      source.stop() // native stop also cancels a source whose start is in the future
+      source.disconnect()
+      envelope.dispose()
+    }
+    voices.clear()
+    output.dispose()
   }
-  at(s.durationMs, finish)
+  signal.addEventListener('abort', dispose, { once: true })
+
+  const at = (ms: number, callback: () => void) => {
+    const timer = setTimeout(() => {
+      timers.delete(timer)
+      if (!disposed && !signal.aborted) callback()
+    }, ms)
+    timers.add(timer)
+  }
+  const wait = (ms: number) => abortable(new Promise<void>((resolve) => at(ms, resolve)), signal)
+  const note = (name: string, ms: number, time: number) => {
+    signal.throwIfAborted()
+    if (disposed) throw new Error('Piano session has ended')
+    const midi = nameToMidi(name)
+    // Match Tone.Sampler's nearest-sample choice (prefer the higher sample on ties).
+    const closest = [...samples.keys()].sort((a, b) => Math.abs(a - midi) - Math.abs(b - midi) || b - a)[0]
+    const buffer = samples.get(closest)!
+    const rate = 2 ** ((midi - closest) / 12)
+    // Keep native source handles: unlike Sampler, scheduled releases cannot
+    // remove them from our ownership. Tone still supplies routing and envelopes.
+    const source = Tone.getContext().createBufferSource()
+    const envelope = new Tone.Gain(0).connect(output)
+    source.buffer = buffer
+    source.playbackRate.value = rate
+    Tone.connect(source, envelope)
+    const voice = { source, envelope }
+    voices.add(voice)
+    source.onended = () => {
+      voices.delete(voice)
+      source.disconnect()
+      envelope.dispose()
+    }
+    envelope.gain.setValueAtTime(1, time)
+    // Match Sampler's zero attack, exponential one-second release envelope.
+    envelope.gain.targetRampTo(0, 1, time + ms / 1000)
+    source.start(time, 0)
+    source.stop(time + ms / 1000 + 1)
+
+  }
 
   return {
-    done,
-    stop: () => {
-      piano.releaseAll()
-      finish()
+    dispose,
+    async playNote(name, ms) {
+      note(name, ms, Tone.now() + 0.02)
+      await wait(ms + 60)
+    },
+    playGraph(s, onNote) {
+      const t0 = Tone.now() + 0.05
+      for (const n of s.notes) {
+        note(n.name, n.durationMs, t0 + n.startMs / 1000)
+        // Keep existing callback timing; coordinate/timing accuracy is a later PR.
+        at(Math.max(0, (t0 - Tone.now()) * 1000 + n.startMs), () => onNote(n.index))
+      }
+      return wait(Math.max(0, (t0 - Tone.now()) * 1000 + s.durationMs)).then(() => {
+        // Natural completion retains the original release tail. Stop/unmount still
+        // owns and disconnects these voices immediately during that tail.
+        at(1200, dispose)
+      })
     },
   }
 }

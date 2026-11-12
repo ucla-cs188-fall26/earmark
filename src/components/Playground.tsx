@@ -49,6 +49,7 @@ export function Playground() {
       <section className="stage">
         <h2>{series.title}</h2>
         <LineChart series={series} activeIndex={sonification.notes[player.activeIndex]?.pointIndex ?? -1} xTickLabel={tick} />
+        {player.error && <p role="alert">{player.error}</p>}
         <PlayerControls
           status={player.status}
           speakPreamble={speakPreamble}

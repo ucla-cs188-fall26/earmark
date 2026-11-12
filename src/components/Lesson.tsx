@@ -9,7 +9,6 @@
  */
 import { useMemo, useState } from 'react'
 import { buildPreamble, sonify } from '../audio/sonification.ts'
-import { speak } from '../audio/speech.ts'
 import { usePlayer } from '../audio/usePlayer.ts'
 import { getGraph, xTickLabel } from '../data/graphs.ts'
 import { QUESTIONS, TEST_QUESTIONS } from '../data/questions.ts'
@@ -52,8 +51,8 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
 
   const play = async () => {
     if (!sonification || !graph) return
-    await player.play(sonification, buildPreamble(sonification, graph))
-    setHasListened(true)
+    const started = await player.play(sonification, buildPreamble(sonification, graph))
+    if (started) setHasListened(true)
   }
 
   /** Stop, then say where we were: "Apr, 14.8". */
@@ -62,7 +61,7 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
     player.stop()
     if (note && graph) {
       const point = graph.points[note.pointIndex]
-      void speak(`${xTickLabel(graph, note.pointIndex)}, ${Number(point.y.toFixed(2))}`)
+      player.announce(`${xTickLabel(graph, note.pointIndex)}, ${Number(point.y.toFixed(2))}`)
     }
   }
 
@@ -82,7 +81,7 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
   }
 
   if (!question || !graph || !sonification) return null
-  const busy = player.status !== 'idle'
+  const busy = player.status !== 'idle' && player.status !== 'error'
   const activePoint = sonification.notes[player.activeIndex]?.pointIndex ?? -1
 
   return (
@@ -95,6 +94,8 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
         </button>
         {!hasListened && phase.stage !== 'reveal' && <span className="hint">Listen first, then answer.</span>}
       </div>
+
+      {player.error && <p role="alert">{player.error}</p>}
 
       <QuestionCard
         question={question}

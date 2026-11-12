@@ -13,10 +13,11 @@ const LABEL: Record<PlayerStatus, string> = {
   speaking: 'Speaking preamble…',
   loading: 'Loading piano…',
   playing: 'Playing…',
+  error: 'Play',
 }
 
 export function PlayerControls({ status, speakPreamble, onToggleSpeak, onPlay, onStop }: Props) {
-  const busy = status !== 'idle'
+  const busy = status !== 'idle' && status !== 'error'
   return (
     <div className="controls">
       <button type="button" onClick={busy ? onStop : onPlay} aria-live="polite">
