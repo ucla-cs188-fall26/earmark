@@ -12,6 +12,7 @@ vi.mock('./player.ts', () => ({ PlaybackController: class {
   stop = lifecycle.stop
   play = vi.fn()
   announce = vi.fn()
+  reset = vi.fn()
   subscribe = vi.fn()
   getSnapshot = () => ({ status: 'idle', activeIndex: -1, error: null })
 } }))

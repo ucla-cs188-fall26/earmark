@@ -276,3 +276,154 @@ reflect inherited disabling and was not used as proof. The fieldset's
   cannot grant it before natural completion.
 - No pause/resume, speed controls, oscillator mode, data/protocol changes, backend,
   UI redesign, or merge is included.
+
+## PR #4 — Graph context, axis interpretation and coordinate accuracy
+
+Date: 2026-11-12
+Branch: `feat/graph-context-and-coordinate-accuracy`
+Stacked base: latest fetched `fix/playback-completion-eligibility` at
+`25eb2c1b4f6bb805d335cc7c44948d13c1010a1a` (PR #3, unmerged when work began).
+PR #3 and `main` were not modified. The new draft targets the PR #3 branch.
+
+### Context and narration
+
+- Replaced the packed, unlabeled number sequence with data-driven sentences:
+  title, horizontal/vertical meanings, units, endpoint labels and observation count;
+  labeled lowest/highest/starting values with reference notes; units per pitch
+  interval; duration and audio-to-axis mapping. Extrema locations are never stated
+  in default narration, including Test mode.
+- Raw graph x/y values remain unchanged. Optional metadata distinguishes numeric
+  and categorical axes, interpolation, axis descriptions, units and display scales.
+  Counts, index points, Fahrenheit, percent, dollars, thousands and millions are
+  expanded without changing the numbers used for pitch mapping. Months and quarter
+  labels are expanded; zero-based numeric sample/day/step indices are described
+  honestly instead of being presented as calendar dates.
+- Narration is split into short labeled utterances so a long mapping explanation
+  does not hit the speech engine's existing 30-second cap as one paragraph.
+- Context appears as a simple semantic definition list. Test still hides the SVG
+  and full observation table until after answering. Onboarding uses a tutorial
+  sample instead of previewing a scored Test graph.
+
+### One coordinate policy
+
+`src/graph/coordinates.ts` owns validation, curve evaluation, axis placement and
+sample lookup. `descriptions.ts` owns corresponding unit/category formatting.
+
+- Numeric playback now uses actual x-distance, including irregular x spacing.
+  Original observations remain represented; additional piano samples interpolate
+  according to the declared policy.
+- Ordered categorical observations receive equal axis/playback spacing, regardless
+  of numeric storage keys. Categories require labels and default to held steps.
+  Linear interpolation must be explicit. All existing temporal categorical graphs
+  now explicitly declare their existing linear policy; narration calls intermediate
+  values estimates between observations, not additional measurements.
+- Held categorical steps do not invent intermediate y-values. Both chart paths and
+  audio use that policy. The existing numeric tutorial `step` stimulus remains
+  linearly connected to preserve the current study protocol; changing that stimulus
+  and its question wording requires research review rather than a silent change.
+- Piano playback remains discrete and quantized. The authoritative coordinate is
+  the interpolated source sample of the latest attack reached on the audio clock,
+  held until the next attack. It is not the nearest original observation and is
+  not a continuous value invented between piano attacks. Multiple release tails
+  can overlap, so text explicitly says “latest sampled position.”
+- The sampler session records its graph start on the audio clock. Stop queries
+  that timeline before cancellation; it does not read React's active highlight.
+  It returns no coordinate during loading/preamble or before scheduled graph onset.
+  UI note timers now use the audio clock's immediate time and re-evaluate their
+  position when delayed, so an old callback cannot rewind the playhead.
+- Chart playheads (including stopped playheads), piano-sample tables and spoken
+  announcements share the same x/value. Numeric units and categorical fractional
+  positions are formatted consistently. A categorical estimate is described as a
+  percentage between named observations, never as an invented month/date.
+- Stopped coordinates persist in accessible text in Intro, Lesson and Playground.
+  App speech announces once; that persistent text is deliberately not another live
+  region. Navigation/replay resets stale coordinates. Display formatting uses
+  up to six decimal places for values, retaining significant digits for tiny values;
+  durations/category percentages use two. Raw interpolated values are unchanged.
+
+### Accessible interface
+
+- Added native details/summary observation tables in Tutorial sample views,
+  Playground and post-answer reveals; table headers/captions and named scrollable
+  regions support screen-reader reading and keyboard access without SVG inspection.
+- Removed pointer-only SVG value inspection; the data table is available to pointer
+  and keyboard users alike. The SVG is a noninteractive visual companion.
+- Named the question progress indicator, added general focus-visible styling,
+  improved primary-button contrast in both themes, and lightened progress fills
+  so progress text remains readable. Context uses the existing restrained palette.
+- No rapidly updated live regions were added for playheads, rows or coordinates.
+  The active sample row uses `aria-current` without automatic announcements.
+
+### Verification
+
+Executed locally on Node 26.7.0 / npm 11.19.0:
+
+| Check | Result |
+| --- | --- |
+| `npm run lint` | Passed |
+| `npm run typecheck` | Passed |
+| `npm test` | 10 files, 98 tests passed (35 more than PR #3) |
+| `npm run build` | Passed; Vite 8.3.6 |
+| `git diff --check` | Passed |
+
+Tests cover irregular numeric axes; categorical equal spacing and held/explicit
+linear policies; one-point series; finite/ordered coordinate and label validation;
+sample-and-hold boundaries; expanded units and labels; all 20 library preambles;
+absence of extrema positions in Test reference sentences; reference pitch intervals;
+no coordinate before graph onset; stale-highlight-independent clock reads; persistent
+Stop ownership/reset; and server-rendered accessible context/table/mode boundaries.
+Existing cancellation, full-completion and eligibility regressions continue to pass.
+
+A direct comparison against PR #3's original `sonify()` on all 20 shipped graphs
+found zero MIDI differences and zero note-count differences. Maximum timing delta
+was approximately 1.17e-12 ms and maximum source-value delta 8.89e-16 (floating-point
+roundoff). Graph point arrays and question banks were not changed. The new irregular
+numeric and held-category behaviors are covered by additional fixtures.
+
+### Browser evidence
+
+Used local Vite with real React Strict Mode, Tone scheduling and piano samples.
+Speech completion was mocked to make interaction checks repeatable; spoken strings
+were captured. One Test check held speech completion to exercise preamble Stop.
+No test hooks were added to production code.
+
+- **Stale highlight correctness:** deliberately blocked the main thread for 400 ms
+  in a capture-phase Stop handler. The React/table highlight was still sample 9;
+  the audio clock had reached sample 13 at elapsed 1487.0068 ms. The captured sample
+  was raw x 2.6 and y 54.2. Both persistent text and the captured speech exactly
+  matched: “Month: 60 percent of the way from March to April. Temperature:
+  54.2 degrees Fahrenheit,” labeled as an estimate. The nearest original point
+  would have incorrectly returned April / 59 degrees Fahrenheit.
+- **Stop regression:** a 2048-sample native analyser at Tone's destination measured
+  piano output RMS 0 at 150 ms after that Stop. This does not measure speech output
+  or establish a sub-50-ms acoustic latency bound.
+- **Test boundary:** deterministic ordering selected Monthly active users, 2023.
+  Before answering: context showed January–December, thousands of users, 42,000–
+  58,000 users and 500 users per semitone, with zero SVGs/tables and disabled
+  choices. Stopping the preamble produced no stopped-coordinate section and did
+  not unlock answers. Full natural playback unlocked answers. Answering exposed
+  one chart and the recorded-data summary. Captured lowest/highest reference
+  sentences contained values but no extrema positions.
+- **Keyboard/data:** focusing the recorded-data summary and pressing Enter opened
+  the observation table. Screenshot review confirmed readable desktop context and
+  a persistent stopped-value block with the graph/data view.
+- **Responsive/theme checks:** at a 320 CSS-pixel viewport the tested reveal page
+  had document scrollWidth 305 (no horizontal document overflow). Primary buttons
+  computed to white on #1f5fa7 in both themes: contrast approximately 6.46:1.
+
+Applied the React best-practices and full-flow verification skills. Screenshots
+and browser artifacts are kept outside the committed repository.
+
+### Limits and research decisions
+
+This targets WCAG 2.2 AA but is not a whole-app conformance claim: NVDA, JAWS,
+VoiceOver, other browser engines, real speech pronunciation and device latency were
+not verified. The existing playback-completion rule and reliable cancellation
+architecture are preserved. No speed, pause/resume or oscillator mode was added.
+
+Research review is still needed for narration length/precision, categorical
+estimation language, the numeric tutorial step stimulus, and whether exact Stop
+lookup is permitted in scored tasks. Numeric/categorical timing and interpolation
+are now explicit rather than silently inferred from index rounding. The new context
+and narration should be versioned as a changed study condition before participant
+comparisons, even though all existing piano pitch sequences are preserved.

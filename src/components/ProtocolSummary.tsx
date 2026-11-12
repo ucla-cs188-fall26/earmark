@@ -1,29 +1,19 @@
-import type { Sonification } from '../types.ts'
+import type { Graph, Sonification } from '../types.ts'
+import { describeAxes, describeMapping, formatValue } from '../graph/descriptions.ts'
 
-interface Props {
-  sonification: Sonification
-  unit?: string
-}
-
-/** The preamble, laid out as a table: what the listener is told before the notes. */
-export function ProtocolSummary({ sonification: s, unit = '' }: Props) {
-  const rows: [string, string][] = [
-    ['Length', `${s.durationMs / 1000} s`],
-    ['Trough', `${s.trough.value}${unit} → ${s.trough.name}`],
-    ['Peak', `${s.peak.value}${unit} → ${s.peak.name}`],
-    ['Start', `${s.start.value}${unit} → ${s.start.name}`],
-    ['Per step', `${s.unitsPerStep}${unit}`],
-  ]
-  return (
-    <table className="summary" aria-label="Protocol preamble">
-      <tbody>
-        {rows.map(([k, v]) => (
-          <tr key={k}>
-            <th scope="row">{k}</th>
-            <td>{v}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
+/** Context allowed before listening in every mode. No extrema locations or full data. */
+export function ProtocolSummary({ graph, sonification: s, headingLevel = 2 }: { graph: Graph; sonification: Sonification; headingLevel?: 2 | 3 }) {
+  const [x, y] = describeAxes(graph)
+  const Heading = headingLevel === 3 ? 'h3' : 'h2'
+  return <section className="graph-information" aria-label="Graph information">
+    <Heading>{graph.title}</Heading>
+    <dl>
+      <dt>Horizontal axis</dt><dd>{x}</dd>
+      <dt>Vertical axis</dt><dd>{y}</dd>
+      <dt>Recorded value range</dt><dd>Lowest: {formatValue(graph, s.trough.value)}. Highest: {formatValue(graph, s.peak.value)}.</dd>
+      <dt>Starting value</dt><dd>{formatValue(graph, s.start.value)}</dd>
+      <dt>Pitch reference</dt><dd>Each {s.stepSemitones === 1 ? 'semitone' : `${s.stepSemitones}-semitone step`} represents {formatValue(graph, s.unitsPerStep)}.</dd>
+      <dt>Playback and axis progression</dt><dd>{describeMapping(graph, s)}</dd>
+    </dl>
+  </section>
 }

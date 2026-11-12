@@ -3,12 +3,15 @@
  * Not part of the lesson. Mostly useful for Person 2 while tuning the mapping.
  */
 import { useMemo, useState } from 'react'
+import { chartPosition } from '../graph/coordinates.ts'
 import { usePlayer } from '../audio/usePlayer.ts'
 import { LineChart } from './LineChart.tsx'
 import { NoteTable } from './NoteTable.tsx'
 import { PlayerControls } from './PlayerControls.tsx'
+import { DataTable } from './DataTable.tsx'
+import { StoppedPosition } from './StoppedPosition.tsx'
 import { ProtocolSummary } from './ProtocolSummary.tsx'
-import { GRAPHS as EXAMPLES, xTickLabel } from '../data/graphs.ts'
+import { GRAPHS as EXAMPLES } from '../data/graphs.ts'
 import { buildPreamble, preambleText, sonify } from '../audio/sonification.ts'
 
 export function Playground() {
@@ -19,7 +22,6 @@ export function Playground() {
   const series = EXAMPLES.find((e) => e.id === exampleId) ?? EXAMPLES[0]
   const sonification = useMemo(() => sonify(series), [series])
   const preamble = buildPreamble(sonification, series)
-  const tick = (x: number) => xTickLabel(series, x)
 
   return (
     <>
@@ -33,7 +35,7 @@ export function Playground() {
           <select
             value={exampleId}
             onChange={(e) => {
-              player.stop()
+              player.reset()
               setExampleId(e.target.value)
             }}
           >
@@ -47,27 +49,29 @@ export function Playground() {
       </section>
 
       <section className="stage">
-        <h2>{series.title}</h2>
-        <LineChart series={series} activeIndex={sonification.notes[player.activeIndex]?.pointIndex ?? -1} xTickLabel={tick} />
+        <ProtocolSummary graph={series} sonification={sonification} />
+        <LineChart series={series} activePosition={chartPosition(sonification, player.activeIndex, player.stoppedPosition)} />
+        <StoppedPosition graph={series} position={player.stoppedPosition} />
+        <DataTable graph={series} />
         {player.error && <p role="alert">{player.error}</p>}
         <PlayerControls
           status={player.status}
           speakPreamble={speakPreamble}
           onToggleSpeak={setSpeakPreamble}
           onPlay={() => void player.play(sonification, speakPreamble ? preamble : undefined)}
-          onStop={player.stop}
+          onStop={() => player.stopAndAnnounce(series)}
         />
       </section>
 
       <section className="details">
         <div>
           <h3>Preamble</h3>
-          <ProtocolSummary sonification={sonification} unit={series.unit} />
+
           <p className="preamble">{preambleText(preamble)}</p>
         </div>
         <div>
           <h3>Notes</h3>
-          <NoteTable sonification={sonification} activeIndex={player.activeIndex} xTickLabel={tick} />
+          <NoteTable graph={series} sonification={sonification} activeIndex={player.activeIndex} />
         </div>
       </section>
     </>

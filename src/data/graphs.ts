@@ -3,21 +3,39 @@
  * Test graphs are a harder second-stage bank for future scoring/assessment.
  * Owner: Person 1.
  */
+import { formatX } from '../graph/descriptions.ts'
 import type { Graph, GraphDifficulty, GraphStage } from '../types.ts'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+const COUNT_UNITS: Record<string, string> = {
+  Requests: 'requests', 'Visitors per minute': 'visitors per minute',
+  AQI: 'air quality index points', 'Confidence index': 'confidence index points',
+  'Search interest': 'search interest index points', 'sin(t)': 'dimensionless units',
+}
 
 function graph(
   id: string,
   title: string,
   ys: number[],
-  labels: { xLabel: string; yLabel: string; unit?: string; xLabels?: string[] },
+  labels: Omit<Graph, 'id' | 'title' | 'points' | 'stage' | 'difficulty'>,
   stage: GraphStage = 'tutorial',
   difficulty: GraphDifficulty = 'easy',
 ): Graph {
   return {
     id,
     title,
+    // Categoricals are held unless the author explicitly permits linear estimates.
+    xKind: labels.xLabels ? 'categorical' : 'numeric',
+    ...(labels.yLabel === 'AQI' ? { yDescription: 'air quality index' } : {}),
+    ...(labels.yLabel === 'sin(t)' ? { yDescription: 'the sine value at each sample' } : {}),
+    interpolation: labels.xLabels ? 'step' : 'linear',
+    ...(!labels.unit ? { valueUnit: {
+      name: COUNT_UNITS[labels.yLabel] ?? 'data units', scale: 1,
+      description: COUNT_UNITS[labels.yLabel] ?? 'data units',
+    } } : {}),
+    ...(!labels.xLabels && ['Day', 'Step'].includes(labels.xLabel) ? { xDescription: `${labels.xLabel.toLowerCase()} index (starting at zero)`, xUnit: `${labels.xLabel.toLowerCase()}s` } : {}),
+    ...(labels.xLabel === 't' ? { xDescription: 'sample index across one sine-wave cycle', xUnit: 'sample-index units' } : {}),
     ...labels,
     stage,
     difficulty,
@@ -38,7 +56,7 @@ export const TUTORIAL_GRAPHS: Graph[] = [
     'temperature',
     'Average monthly high, Cleveland',
     [34, 37, 47, 59, 70, 79, 83, 81, 74, 62, 50, 39],
-    { xLabel: 'Month', yLabel: 'Temperature', unit: '°F', xLabels: MONTHS },
+    { xLabel: 'Month', yLabel: 'Temperature', unit: '°F', xLabels: MONTHS, interpolation: 'linear' },
   ),
   graph(
     'sine',
@@ -89,7 +107,7 @@ export const TEST_GRAPHS: Graph[] = [
     'test-ambiguous-rise',
     'Monthly active users, 2023',
     [42, 44, 46, 48, 49, 50, 52, 53, 52, 51, 54, 58],
-    { xLabel: 'Month', yLabel: 'Active users', unit: 'k', xLabels: MONTHS },
+    { xLabel: 'Month', yLabel: 'Active users', unit: 'k', valueUnit: { name: 'users', scale: 1000, description: 'thousands of users' }, xLabels: MONTHS, interpolation: 'linear' },
     'test',
     'hard',
   ),
@@ -97,7 +115,7 @@ export const TEST_GRAPHS: Graph[] = [
     'test-double-oscillation',
     'Average daily high, Austin, 12 weeks of spring',
     [66, 62, 58, 60, 65, 63, 57, 61, 69, 74, 72, 77],
-    { xLabel: 'Week', yLabel: 'Temperature', unit: '°F', xLabels: WEEKS },
+    { xLabel: 'Week', yLabel: 'Temperature', unit: '°F', xLabels: WEEKS, interpolation: 'linear' },
     'test',
     'hard',
   ),
@@ -105,7 +123,7 @@ export const TEST_GRAPHS: Graph[] = [
     'test-peak-trough',
     'Air quality index, 12 days in August',
     [30, 34, 39, 45, 42, 38, 41, 47, 50, 46, 40, 43],
-    { xLabel: 'Day', yLabel: 'AQI', xLabels: Array.from({ length: 12 }, (_, i) => `Aug ${i + 1}`) },
+    { xLabel: 'Day', yLabel: 'AQI', xLabels: Array.from({ length: 12 }, (_, i) => `Aug ${i + 1}`), interpolation: 'linear' },
     'test',
     'hard',
   ),
@@ -113,7 +131,7 @@ export const TEST_GRAPHS: Graph[] = [
     'test-saw-bias',
     'Consumer confidence index, 2022',
     [80, 84, 79, 83, 88, 82, 86, 90, 85, 81, 78, 75],
-    { xLabel: 'Month', yLabel: 'Confidence index', xLabels: MONTHS },
+    { xLabel: 'Month', yLabel: 'Confidence index', xLabels: MONTHS, interpolation: 'linear' },
     'test',
     'hard',
   ),
@@ -121,7 +139,7 @@ export const TEST_GRAPHS: Graph[] = [
     'test-recovery-shock',
     'Airline share price, 2020',
     [95, 88, 81, 76, 79, 86, 92, 96, 93, 90, 89, 90],
-    { xLabel: 'Month', yLabel: 'Share price', unit: '$', xLabels: MONTHS },
+    { xLabel: 'Month', yLabel: 'Share price', unit: '$', xLabels: MONTHS, interpolation: 'linear' },
     'test',
     'hard',
   ),
@@ -129,7 +147,7 @@ export const TEST_GRAPHS: Graph[] = [
     'test-drift-then-jump',
     'Website visitors per minute, overnight to noon',
     [35, 37, 36, 38, 39, 41, 43, 42, 46, 52, 51, 50],
-    { xLabel: 'Hour', yLabel: 'Visitors per minute', xLabels: HOURS },
+    { xLabel: 'Hour', yLabel: 'Visitors per minute', xLabels: HOURS, interpolation: 'linear' },
     'test',
     'hard',
   ),
@@ -137,7 +155,7 @@ export const TEST_GRAPHS: Graph[] = [
     'test-multi-peak',
     'Quarterly revenue, 2021 to 2023',
     [58, 60, 57, 62, 61, 66, 64, 59, 63, 70, 68, 64],
-    { xLabel: 'Quarter', yLabel: 'Revenue', unit: '$M', xLabels: QUARTERS },
+    { xLabel: 'Quarter', yLabel: 'Revenue', unit: '$M', xLabels: QUARTERS, interpolation: 'linear' },
     'test',
     'hard',
   ),
@@ -145,7 +163,7 @@ export const TEST_GRAPHS: Graph[] = [
     'test-flat-then-surge',
     'Search interest for "flu symptoms", October to December',
     [50, 51, 49, 50, 52, 51, 54, 59, 65, 70, 72, 76],
-    { xLabel: 'Week', yLabel: 'Search interest', xLabels: WEEKS },
+    { xLabel: 'Week', yLabel: 'Search interest', xLabels: WEEKS, interpolation: 'linear' },
     'test',
     'hard',
   ),
@@ -153,7 +171,7 @@ export const TEST_GRAPHS: Graph[] = [
     'test-final-dip',
     'Relative humidity, noon to midnight',
     [70, 72, 71, 73, 74, 75, 72, 71, 70, 69, 68, 65],
-    { xLabel: 'Hour', yLabel: 'Humidity', unit: '%', xLabels: PM_HOURS },
+    { xLabel: 'Hour', yLabel: 'Humidity', unit: '%', xLabels: PM_HOURS, interpolation: 'linear' },
     'test',
     'hard',
   ),
@@ -161,7 +179,7 @@ export const TEST_GRAPHS: Graph[] = [
     'test-reverse-wave',
     'Bitcoin price, 12 weeks in late 2021',
     [60, 64, 62, 58, 57, 61, 68, 65, 59, 55, 60, 67],
-    { xLabel: 'Week', yLabel: 'Price', unit: 'k$', xLabels: WEEKS },
+    { xLabel: 'Week', yLabel: 'Price', unit: 'k$', xLabels: WEEKS, interpolation: 'linear' },
     'test',
     'hard',
   ),
@@ -178,5 +196,5 @@ export function getGraph(id: string): Graph {
 
 /** Human-readable x tick label for a graph. */
 export function xTickLabel(graph: Graph, x: number): string {
-  return graph.xLabels?.[x] ?? String(x)
+  return formatX(graph, x)
 }

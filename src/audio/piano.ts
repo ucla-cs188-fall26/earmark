@@ -1,6 +1,7 @@
 import * as Tone from 'tone'
-import type { Sonification } from '../types.ts'
+import type { PlaybackPosition, Sonification } from '../types.ts'
 import { nameToMidi } from './sonification.ts'
+import { positionAtTime } from '../graph/coordinates.ts'
 import { abortable } from './cancellation.ts'
 
 const SAMPLE_BASE_URL = 'https://tonejs.github.io/audio/salamander/'
@@ -27,6 +28,7 @@ export interface PianoSession {
   playNote: (name: string, ms: number) => Promise<void>
   playGraph: (s: Sonification, onNote: (index: number) => void) => Promise<void>
   dispose: () => void
+  getPosition: () => PlaybackPosition | null
 }
 
 /** One request owns every voice, timer and output node, including its preamble. */
@@ -51,6 +53,9 @@ export async function createPianoSession(signal: AbortSignal): Promise<PianoSess
   const voices = new Set<{ source: AudioBufferSourceNode; envelope: Tone.Gain }>()
   const timers = new Set<ReturnType<typeof setTimeout>>()
   let disposed = false
+  let graphTimeline: { s: Sonification; t0: number } | null = null
+  const getPosition = () => disposed || !graphTimeline ? null
+    : positionAtTime(graphTimeline.s, (Tone.immediate() - graphTimeline.t0) * 1000)
 
   const dispose = () => {
     if (disposed) return
@@ -117,17 +122,22 @@ export async function createPianoSession(signal: AbortSignal): Promise<PianoSess
 
   return {
     dispose,
+    getPosition,
     async playNote(name, ms) {
       void note(name, ms, Tone.now() + 0.02)
       await wait(ms + 60)
     },
     playGraph(s, onNote) {
       const t0 = Tone.now() + 0.05
+      graphTimeline = { s, t0 }
       const ended: Promise<void>[] = []
       for (const n of s.notes) {
         ended.push(note(n.name, n.durationMs, t0 + n.startMs / 1000))
-        // Keep existing callback timing; coordinate/timing accuracy is a later PR.
-        at(Math.max(0, (t0 - Tone.now()) * 1000 + n.startMs), () => onNote(n.index))
+        // Read the clock when a callback runs; delayed timers cannot rewind the highlight.
+        at(Math.max(0, (t0 - Tone.immediate()) * 1000 + n.startMs), () => {
+          const position = getPosition()
+          if (position) onNote(position.index)
+        })
       }
       // Completion requires the audio-clock endpoint AND naturally ended graph
       // voices (including their existing release tails), not just UI timers.

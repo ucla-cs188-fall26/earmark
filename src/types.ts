@@ -25,6 +25,15 @@ export interface Graph {
   unit?: string
   /** Optional labels for the x axis, index-aligned with `points` (e.g. month names). */
   xLabels?: string[]
+  /** Numeric distance or equally spaced, ordered categorical observations. */
+  xKind?: 'numeric' | 'categorical'
+  xUnit?: string
+  xDescription?: string
+  yDescription?: string
+  /** Expanded unit and raw-to-spoken scale; raw graph data are never converted. */
+  valueUnit?: { name: string; scale: number; description: string }
+  /** Categories default to held steps unless linear estimation is explicit. */
+  interpolation?: 'linear' | 'step'
   /** Which stage this graph belongs to. */
   stage?: GraphStage
   /** Relative challenge level for future scoring / selection. */
@@ -75,7 +84,7 @@ export interface Anchor {
 export interface Note {
   /** Position in the note sequence. */
   index: number
-  /** Nearest data point (for highlighting and for "value at this moment"). */
+  /** Nearest original observation, for provenance only; never use as the current value. */
   pointIndex: number
   /** Interpolated x along the graph. */
   x: number
@@ -88,8 +97,7 @@ export interface Note {
 }
 
 /**
- * One element of the packed preamble: either a spoken token or a piano note.
- * The listener learns the fixed order and decodes it without any sentences.
+ * One element of descriptive narration: either a labeled sentence or a reference note.
  */
 export type PreambleItem = { say: string } | { note: number; name: string; ms: number }
 
@@ -101,6 +109,7 @@ export interface Sonification {
   peak: Anchor
   start: Anchor
   unitsPerStep: number
+  stepSemitones: number
   notes: Note[]
 }
 
@@ -141,3 +150,12 @@ export type LessonPhase =
   | { kind: 'intro' }
   | { kind: 'question'; index: number; stage: 'listen' | 'answer' | 'reveal' }
   | { kind: 'results' }
+
+/** The latest scheduled sample reached on the audio clock, not a rounded observation. */
+export interface PlaybackPosition {
+  graphId: string
+  elapsedMs: number
+  index: number
+  x: number
+  value: number
+}

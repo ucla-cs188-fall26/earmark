@@ -16,7 +16,7 @@ function deferred<T>() {
 }
 function piano() {
   const done = deferred<void>()
-  return { playNote: vi.fn().mockResolvedValue(undefined), playGraph: vi.fn((_s: typeof s, _onNote: (index: number) => void) => done.promise), dispose: vi.fn(), done }
+  return { playNote: vi.fn().mockResolvedValue(undefined), playGraph: vi.fn((_s: typeof s, _onNote: (index: number) => void) => done.promise), dispose: vi.fn(), getPosition: vi.fn().mockReturnValue(null), done }
 }
 beforeEach(() => {
   deps.create.mockReset()
@@ -90,7 +90,7 @@ describe('playback generations', () => {
     oldNote(40)
     old.done.reject(new Error('late error'))
     await Promise.resolve()
-    expect(player.getSnapshot()).toEqual({ status: 'playing', activeIndex: 3, error: null })
+    expect(player.getSnapshot()).toEqual({ status: 'playing', activeIndex: 3, error: null, stoppedPosition: null })
     player.stop()
     next.done.resolve()
     await Promise.resolve()
@@ -124,7 +124,7 @@ describe('playback generations', () => {
     expect((await player.play(s).finished).kind).toBe('failed')
     expect(player.getSnapshot()).toMatchObject({ status: 'error', activeIndex: -1, error: expect.stringContaining('retry') })
     expect((await player.play(s).scheduled).kind).toBe('scheduled')
-    expect(player.getSnapshot()).toEqual({ status: 'playing', activeIndex: -1, error: null })
+    expect(player.getSnapshot()).toEqual({ status: 'playing', activeIndex: -1, error: null, stoppedPosition: null })
     player.stop()
   })
 
@@ -255,5 +255,31 @@ describe('explicit playback outcomes', () => {
     next.done.resolve()
     expect((await b.finished).kind).toBe('completed')
     expect(a.sessionId).not.toBe(b.sessionId)
+  })
+})
+
+describe('stop position ownership', () => {
+  it('captures audio-clock coordinates instead of the React highlight and retains them through speech', async () => {
+    const audio = piano()
+    const actual = { graphId: s.graphId, elapsedMs: 3000, index: 27, x: 4.5, value: 10 }
+    audio.getPosition.mockReturnValue(actual)
+    deps.create.mockResolvedValue(audio)
+    const player = new PlaybackController()
+    await player.play(s).scheduled
+    audio.playGraph.mock.calls[0][1](0) // deliberately stale UI
+    expect(player.stop()).toEqual(actual)
+    expect(player.getSnapshot().stoppedPosition).toEqual(actual)
+    player.announce('Stopped position')
+    expect(player.getSnapshot().stoppedPosition).toEqual(actual)
+    player.reset()
+    expect(player.getSnapshot().stoppedPosition).toBeNull()
+  })
+  it('does not fabricate a position during loading or preamble cancellation', async () => {
+    deps.create.mockReturnValue(new Promise(() => {}))
+    const player = new PlaybackController()
+    const pending = player.play(s)
+    expect(player.stop()).toBeNull()
+    expect((await pending.finished).kind).toBe('cancelled')
+    expect(player.getSnapshot().stoppedPosition).toBeNull()
   })
 })

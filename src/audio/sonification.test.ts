@@ -105,15 +105,18 @@ describe('sonify', () => {
     expect(() => sonify(series([]))).toThrow()
   })
 
-  it('packs the preamble as notes and numbers in the fixed order', () => {
+  it('labels references and explains units instead of emitting unexplained numbers', () => {
     const g = series([10, 20, 15, 40, 5])
     const items = buildPreamble(s, g)
-    expect(preambleText(items)).toBe('Month. Rate, %. 6 [C3] 5 [B5] 40 [F3] 10 [C3] [C#3] 1')
-    // spoken tokens are numbers only, apart from the axes
+    const text = preambleText(items)
+    expect(text).toContain('The horizontal axis represents Month')
+    expect(text).toContain('The lowest recorded value is 5 percent.')
+    expect(text).toContain('The highest recorded value is 40 percent.')
+    expect(text).toContain('The graph starts at 10 percent.')
+    expect(text).toContain('Each semitone represents 1 percent.')
+    expect(text).toContain('The graph plays over 6 seconds')
     const spoken = items.flatMap((i) => ('say' in i ? [i.say] : []))
-    expect(spoken.slice(1).every((t) => /^-?\d+(\.\d+)?$/.test(t))).toBe(true)
-    // the reference notes are exactly the anchors
-    const notes = items.flatMap((i) => ('note' in i ? [i.note] : []))
-    expect(notes).toEqual([s.trough.midi, s.peak.midi, s.start.midi, s.trough.midi, s.trough.midi + 1])
+    expect(spoken.every((t) => !/^-?\d+(\.\d+)?$/.test(t))).toBe(true)
+    expect(items.flatMap((i) => ('note' in i ? [i.note] : []))).toEqual([s.trough.midi, s.peak.midi, s.start.midi, s.trough.midi, s.trough.midi + 1])
   })
 })
