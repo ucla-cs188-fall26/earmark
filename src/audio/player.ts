@@ -2,6 +2,18 @@ import type { PreambleItem, Sonification } from '../types.ts'
 import { createPianoSession, type PianoSession } from './piano.ts'
 import { speak } from './speech.ts'
 
+export interface PlaybackOutcome {
+  kind: 'completed' | 'cancelled' | 'failed'
+  sessionId: number
+  graphId: string
+}
+export interface PlaybackRequest {
+  sessionId: number
+  /** Scheduling is not evidence that the listener heard the graph. */
+  scheduled: Promise<Omit<PlaybackOutcome, 'kind'> & { kind: 'scheduled' | 'cancelled' | 'failed' }>
+  finished: Promise<PlaybackOutcome>
+}
+
 export type PlayerStatus = 'idle' | 'speaking' | 'loading' | 'playing' | 'error'
 export interface PlayerSnapshot {
   status: PlayerStatus
@@ -12,6 +24,7 @@ interface Session {
   id: number
   abort: AbortController
   piano?: PianoSession
+  settle?: (kind: PlaybackOutcome['kind']) => void
 }
 
 /** Framework-independent coordinator; React subscribes to its immutable snapshot. */
@@ -32,10 +45,11 @@ export class PlaybackController {
   private current(session: Session) {
     return this.session === session && session.id === this.generation && !session.abort.signal.aborted
   }
-  private cancel() {
+  private cancel(outcome: 'cancelled' | 'failed' = 'cancelled') {
     ++this.generation
     const previous = this.session
     this.session = null // invalidate callbacks before abort handlers run
+    previous?.settle?.(outcome)
     previous?.abort.abort()
     previous?.piano?.dispose()
   }
@@ -51,19 +65,35 @@ export class PlaybackController {
   }
   private fail(session: Session) {
     if (!this.current(session)) return
-    this.cancel()
+    this.cancel('failed')
     this.update({ status: 'error', activeIndex: -1, error: 'Unable to load or play piano audio. Check your connection and press Play to retry.' })
   }
-  /** True means graph scheduling succeeded; completion eligibility is unchanged. */
-  play = async (s: Sonification, preamble?: PreambleItem[]): Promise<boolean> => {
+  /** Each request settles exactly once, even if an underlying load never resolves. */
+  play = (s: Sonification, preamble?: PreambleItem[]): PlaybackRequest => {
     const session = this.begin()
-    const signal = session.abort.signal
+    const identity = { sessionId: session.id, graphId: s.graphId }
+    let scheduled!: (value: Awaited<PlaybackRequest['scheduled']>) => void
+    let finished!: (value: PlaybackOutcome) => void
+    const request: PlaybackRequest = {
+      sessionId: session.id,
+      scheduled: new Promise((resolve) => { scheduled = resolve }),
+      finished: new Promise((resolve) => { finished = resolve }),
+    }
+    session.settle = (kind) => {
+      if (kind !== 'completed') scheduled({ ...identity, kind })
+      finished({ ...identity, kind })
+    }
     this.update({ status: 'loading' })
+    void this.run(session, s, preamble, () => scheduled({ ...identity, kind: 'scheduled' }))
+    return request
+  }
+  private async run(session: Session, s: Sonification, preamble: PreambleItem[] | undefined, scheduled: () => void) {
+    const signal = session.abort.signal
     try {
       session.piano = await createPianoSession(signal)
       if (!this.current(session)) {
         session.piano.dispose()
-        return false
+        return
       }
       if (preamble) {
         this.update({ status: 'speaking' })
@@ -71,23 +101,21 @@ export class PlaybackController {
           signal.throwIfAborted()
           if ('say' in item) await speak(item.say, signal)
           else await session.piano.playNote(item.name, item.ms)
-          if (!this.current(session)) return false
+          if (!this.current(session)) return
         }
       }
       const done = session.piano.playGraph(s, (activeIndex) => {
         if (this.current(session)) this.update({ activeIndex })
       })
       this.update({ status: 'playing' })
-      void done.then(() => {
-        if (!this.current(session)) return
-        // Keep ownership through the release tail; the piano disposes itself.
-        // A subsequent Stop, replacement or unmount can still cut that tail.
-        this.update({ status: 'idle', activeIndex: -1 })
-      }, () => this.fail(session))
-      return true
+      scheduled()
+      await done
+      if (!this.current(session)) return
+      session.piano.dispose()
+      this.update({ status: 'idle', activeIndex: -1 })
+      session.settle?.('completed')
     } catch {
       this.fail(session)
-      return false
     }
   }
   /** Stop-position speech participates in the same replacement/unmount lifecycle. */

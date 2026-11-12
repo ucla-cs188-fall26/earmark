@@ -11,15 +11,16 @@ interface Props {
   question: Question
   /** The index the listener chose, once they have answered. */
   chosenIndex: number | null
-  /** Disabled until the clip has played at least once. */
+  /** Disabled until one graph playback has completed naturally. */
   disabled?: boolean
+  instructionsId?: string
   onAnswer: (index: number) => void
 }
 
-export function QuestionCard({ question, chosenIndex, disabled = false, onAnswer }: Props) {
+export function QuestionCard({ question, chosenIndex, disabled = false, instructionsId, onAnswer }: Props) {
   const answered = chosenIndex !== null
   return (
-    <fieldset className="question" disabled={disabled || answered}>
+    <fieldset className="question" disabled={disabled || answered} aria-describedby={instructionsId}>
       <legend>{question.prompt}</legend>
       <ol className="choices">
         {question.choices.map((choice, i) => {
