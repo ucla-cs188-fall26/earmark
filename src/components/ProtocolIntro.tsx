@@ -29,7 +29,7 @@ export function ProtocolIntro({ player, onStart, mode = 'tutorial' }: Props) {
   const sample = mode === 'test' ? TEST_GRAPHS[0] : GRAPHS[0]
   const sonification = sonify(sample)
   const preamble = buildPreamble(sonification, sample)
-  const busy = player.status !== 'idle'
+  const busy = player.status !== 'idle' && player.status !== 'error'
   const activePoint = sonification.notes[player.activeIndex]?.pointIndex ?? -1
 
   return (
@@ -53,6 +53,8 @@ export function ProtocolIntro({ player, onStart, mode = 'tutorial' }: Props) {
       <h3>{sample.title}</h3>
       <p className="preamble">{preambleText(preamble)}</p>
       {mode === 'tutorial' && <LineChart series={sample} activeIndex={activePoint} />}
+
+      {player.error && <p role="alert">{player.error}</p>}
 
       <div className="controls">
         <button type="button" onClick={() => (busy ? player.stop() : void player.play(sonification, preamble))}>
