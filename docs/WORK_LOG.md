@@ -427,3 +427,15 @@ lookup is permitted in scored tasks. Numeric/categorical timing and interpolatio
 are now explicit rather than silently inferred from index rounding. The new context
 and narration should be versioned as a changed study condition before participant
 comparisons, even though all existing piano pitch sequences are preserved.
+
+
+## Roadmap — Remove GitHub Pages deployment
+
+Branch `chore/vercel-deployment-cleanup`, independent from latest main. Removed only
+the Pages publishing workflow; CI remains unchanged. Vite now explicitly builds
+at `/` regardless of historical Pages environment variables. README describes an
+owner-controlled future Vercel import, build/output settings, and the fact that
+import itself can deploy. No Vercel credentials, project, deployment or production
+settings were created or changed. Regression checks cover both environment values
+and verify root assets in a real production build. Local lint, typecheck, tests,
+build and diff checks passed; browser root preview loads the application.
