@@ -1,10 +1,11 @@
 # Earmark work log
 
-## PR #1 — Reliable audio cancellation and playback session isolation
+## PR #2 — Reliable audio cancellation and playback session isolation
 
 Date: 2026-11-12
 Base: `main` at `0c55d50e07a30600ea3b9c167836b198e7182d20`
 Branch: `fix/audio-stop-session-isolation`
+Pull request: [PR #2](https://github.com/ucla-cs188-fall26/earmark/pull/2)
 
 ### Confirmed findings
 
@@ -131,4 +132,23 @@ Browser-generated artifacts were kept outside the committed source tree.
   Hard disconnect favors reliable silence; subjective click/timbre evaluation
   remains appropriate during review.
 - The Phase 0 Node 20 / installed Vitest engine mismatch remains outside this PR;
-  passing checks here were executed on Node 26, not Node 20 CI.
+  local checks above were executed on Node 26. The subsequently verified Node 20
+  GitHub Actions run passed, as recorded below; declared dependency engine ranges
+  remain unchanged.
+
+
+### GitHub Actions and review status
+
+Verified on 2026-11-12: [PR #2](https://github.com/ucla-cs188-fall26/earmark/pull/2)
+is open as a draft against `main` and has not been merged.
+
+The implementation commit is `4516b30413f0e19bf604e5ed204a0d2efdfac4ad`.
+Its [GitHub Actions CI run #43212524895](https://github.com/ucla-cs188-fall26/earmark/actions/runs/43212524895)
+completed successfully. The `check` job and its `npm ci`, lint, typecheck, unit-test,
+and production-build steps all reported success. The workflow uses Node 20;
+this remote result is separate from the earlier local Node 26 checks.
+
+This follow-up updates only documentation and the PR description. PR #2 remains
+open for review. After it is merged, the next branch will be
+`fix/playback-completion-eligibility`, created from the updated `main`. That branch
+has not been created.
