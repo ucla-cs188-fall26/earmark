@@ -5,7 +5,7 @@ for graph sonification, with descriptive narration, explicit pitch references,
 training questions and an audio-only assessment flow. Comparative usability
 claims require study evidence.
 
-**Live site:** https://laziestcactus.github.io/earmark/ (deploys from `main`)
+Deployment is intentionally manual; repository CI does not publish the app.
 
 ## Quick start
 
@@ -36,7 +36,6 @@ Requires Node 20+ (`.nvmrc` is set to 20).
 | **Plain SVG chart**           | ~100 lines, no chart library, full control over the playhead that follows the audio.       |
 | **Web Speech API**            | Speaks the preamble so the demo works end to end without sight.                            |
 | **Vitest**                    | Protocol logic is pure TS, so it is unit-tested with no browser.                           |
-| **GitHub Pages via Actions**  | Push to `main` and the demo is live for user-study participants.                           |
 
 Deliberately *not* included yet: a backend, auth, a database, a state library.
 Add them only when a feature needs them.
@@ -81,7 +80,6 @@ src/
   App.tsx          Shell with hash routing (# lesson, #playground)
 .github/workflows/
   ci.yml           lint + typecheck + test + build on every push / PR
-  deploy.yml       Build and publish to GitHub Pages on push to main
 ```
 
 Dependency direction: `types.ts` <- `data`, `audio`, `quiz` <- `components` <- `App`.
@@ -155,3 +153,17 @@ Stopped-position text persists and is not a live region competing with app speec
 - [ ] Side-by-side comparison with Apple Audio Graph style (continuous pitch, no preamble)
 - [ ] Record the clip to a WAV for sharing outside the browser
 - [ ] Log study responses (needs a tiny backend or a form service)
+
+## Optional Vercel import (owner action)
+
+No deployment or project configuration is performed by repository CI. When ready,
+import this Git repository in Vercel, choose the Vite framework preset, repository
+root, build command `npm run build`, and output directory `dist`. The app uses hash
+routes and assets at `/`, so it requires no Pages subpath or server rewrites.
+Use a supported Node version (local checks use Node 26); review project settings
+and Git automatic-deployment behavior before enabling the integration. Importing
+can trigger a deployment, so this remains an explicit owner action.
+
+No Vercel tokens, project IDs or other credentials belong in GitHub for this static
+app. Keep `.github/workflows/ci.yml` for lint, types, tests and build. See the
+[official Vite guide](https://vercel.com/docs/frameworks/frontend/vite).
