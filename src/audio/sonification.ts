@@ -10,6 +10,8 @@
  *  - decide fixed clip length vs fixed time per point
  *  - optional glissando / continuous mode for the comparison condition
  */
+import { axisPosition, evaluateGraph, observationAt, rawX, validateGraph } from '../graph/coordinates.ts'
+import { describeAxes, describePlaybackParts, formatValue } from '../graph/descriptions.ts'
 import { DEFAULT_OPTIONS } from '../types.ts'
 import type { Anchor, Graph, Note, PreambleItem, ProtocolOptions, Sonification } from '../types.ts'
 
@@ -58,14 +60,6 @@ export function niceStep(min: number): number {
   return 10 * base // unreachable, keeps TS happy
 }
 
-/** Linear interpolation of the graph at fractional x (in point-index units). */
-function sampleAt(points: Graph['points'], t: number): number {
-  const i = Math.min(points.length - 2, Math.max(0, Math.floor(t)))
-  const frac = t - i
-  if (points.length === 1) return points[0].y
-  return points[i].y + (points[i + 1].y - points[i].y) * frac
-}
-
 /**
  * Map a graph to the Earmark protocol.
  *
@@ -78,14 +72,15 @@ function sampleAt(points: Graph['points'], t: number): number {
  *
  * Timing (v1):
  *   - The graph is resampled to roughly one note every `noteMs` across
- *     `durationMs`, interpolating linearly between data points so it sounds
- *     continuous. Every original data point is still sounded exactly.
+ *     `durationMs`, using the explicit graph interpolation policy. Numeric x
+ *     distances determine timing; categorical observations receive equal spacing.
+ *     Every original data point is still sounded exactly.
  *   - Each note sounds for (1 - gapRatio) of its slot.
  */
 export function sonify(graph: Graph, overrides: Partial<ProtocolOptions> = {}): Sonification {
   const opts: ProtocolOptions = { ...DEFAULT_OPTIONS, ...overrides }
   const { points } = graph
-  if (points.length === 0) throw new Error('Cannot sonify an empty graph')
+  validateGraph(graph)
   if (opts.highestMidi - opts.lowestMidi < opts.stepSemitones) {
     throw new Error('Pitch range must span at least one step')
   }
@@ -107,25 +102,25 @@ export function sonify(graph: Graph, overrides: Partial<ProtocolOptions> = {}): 
     return { value, midi, name: midiToName(midi) }
   }
 
-  // `perSegment` notes between consecutive data points, so every data point
-  // (including the peak and trough) is sounded exactly, never only interpolated.
-  const segments = Math.max(1, points.length - 1)
-  const perSegment = Math.max(1, Math.round(opts.durationMs / opts.noteMs / segments))
-  const count = points.length === 1 ? 1 : perSegment * segments + 1
-  const slotMs = opts.durationMs / count
-  const notes: Note[] = Array.from({ length: count }, (_, index) => {
-    const t = index / perSegment
-    const value = sampleAt(points, t)
+  const first = axisPosition(graph, points[0].x)
+  const last = axisPosition(graph, points.at(-1)!.x)
+  const positions: number[] = []
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = axisPosition(graph, points[i].x), b = axisPosition(graph, points[i + 1].x)
+    const subdivisions = Math.max(1, Math.round(opts.durationMs / opts.noteMs * (b - a) / (last - first)))
+    for (let j = 0; j < subdivisions; j++) positions.push(a + (b - a) * j / subdivisions)
+  }
+  positions.push(last)
+  const slotMs = opts.durationMs / positions.length
+  const starts = positions.map((position) => last === first ? 0 : (position - first) / (last - first) * (opts.durationMs - slotMs))
+  const notes: Note[] = positions.map((position, index) => {
+    const x = rawX(graph, position)
+    const value = evaluateGraph(graph, x)
     const midi = toMidi(value)
     return {
-      index,
-      pointIndex: Math.round(t),
-      x: t,
-      value,
-      midi,
-      name: midiToName(midi),
-      startMs: index * slotMs,
-      durationMs: slotMs * (1 - opts.gapRatio),
+      index, pointIndex: Math.round(observationAt(graph, x)), x, value, midi,
+      name: midiToName(midi), startMs: starts[index],
+      durationMs: ((starts[index + 1] ?? opts.durationMs) - starts[index]) * (1 - opts.gapRatio),
     }
   })
 
@@ -136,47 +131,29 @@ export function sonify(graph: Graph, overrides: Partial<ProtocolOptions> = {}): 
     peak: anchor(peakValue),
     start: anchor(points[0].y),
     unitsPerStep,
+    stepSemitones: opts.stepSemitones,
     notes,
   }
 }
 
-const fmt = (v: number) => String(Number(v.toFixed(2)))
-
-/** Length of each reference note in the preamble. */
-const REF_NOTE_MS = 450
-
-/**
- * The packed preamble. No sentences: the listener is taught the order once
- * and decodes it from then on.
- *
- *   axes (spoken once)
- *   length in seconds
- *   [lowest note]  lowest value
- *   [highest note] highest value
- *   [start note]   start value
- *   [a note][one step up] value of one step
- *
- * Keep this the single source of truth for the order so UI and audio agree.
- */
-export function buildPreamble(s: Sonification, graph: Graph, stepSemitones = DEFAULT_OPTIONS.stepSemitones): PreambleItem[] {
-  const note = (midi: number): PreambleItem => ({ note: midi, name: midiToName(midi), ms: REF_NOTE_MS })
-  const unit = graph.unit ? `, ${graph.unit}` : ''
+/** Descriptive narration labels every reference; it never gives extrema positions. */
+export function buildPreamble(s: Sonification, graph: Graph): PreambleItem[] {
+  const note = (midi: number): PreambleItem => ({ note: midi, name: midiToName(midi), ms: 450 })
+  const [x, y] = describeAxes(graph)
   return [
-    { say: `${graph.xLabel}. ${graph.yLabel}${unit}.` },
-    { say: fmt(s.durationMs / 1000) },
+    { say: `${graph.title}.` }, { say: x }, { say: y },
+    { say: `The lowest recorded value is ${formatValue(graph, s.trough.value)}. Here is the lowest reference note.` },
     note(s.trough.midi),
-    { say: fmt(s.trough.value) },
+    { say: `The highest recorded value is ${formatValue(graph, s.peak.value)}. Here is the highest reference note.` },
     note(s.peak.midi),
-    { say: fmt(s.peak.value) },
+    { say: `The graph starts at ${formatValue(graph, s.start.value)}. Here is the starting reference note.` },
     note(s.start.midi),
-    { say: fmt(s.start.value) },
-    note(s.trough.midi),
-    note(s.trough.midi + stepSemitones),
-    { say: fmt(s.unitsPerStep) },
+    { say: `Each ${s.stepSemitones === 1 ? 'semitone' : `${s.stepSemitones}-semitone step`} represents ${formatValue(graph, s.unitsPerStep)}. Here are two notes one pitch step apart.` },
+    note(s.trough.midi), note(s.trough.midi + s.stepSemitones),
+    ...describePlaybackParts(graph, s).map((say) => ({ say })),
   ]
 }
 
-/** Text rendering of the preamble for the screen: notes in brackets, speech in quotes. */
 export function preambleText(items: PreambleItem[]): string {
   return items.map((i) => ('say' in i ? i.say : `[${i.name}]`)).join(' ')
 }

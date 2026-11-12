@@ -1,8 +1,9 @@
 # Earmark
 
-Hear a graph as a sequence of piano notes. Earmark is a training and demo site for
-our sonification protocol, built to show that a short spoken preamble plus a
-whole-step pitch mapping is easier to follow than Apple's built-in audio graphs.
+Hear a graph as a sequence of piano notes. Earmark is an HCI research prototype
+for graph sonification, with descriptive narration, explicit pitch references,
+training questions and an audio-only assessment flow. Comparative usability
+claims require study evidence.
 
 **Live site:** https://laziestcactus.github.io/earmark/ (deploys from `main`)
 
@@ -31,7 +32,7 @@ Requires Node 20+ (`.nvmrc` is set to 20).
 | Choice                        | Reason                                                                                     |
 | ----------------------------- | ------------------------------------------------------------------------------------------ |
 | **Vite + React + TypeScript** | Static site, no backend needed. Fast to run locally, trivial to deploy, everyone knows it. |
-| **Tone.js `Sampler`**         | Real sampled piano (Salamander grand) in the browser with sample-accurate scheduling.      |
+| **Tone.js + owned audio sources**         | Salamander piano samples with per-session source ownership and reliable cancellation.      |
 | **Plain SVG chart**           | ~100 lines, no chart library, full control over the playhead that follows the audio.       |
 | **Web Speech API**            | Speaks the preamble so the demo works end to end without sight.                            |
 | **Vitest**                    | Protocol logic is pure TS, so it is unit-tested with no browser.                           |
@@ -70,7 +71,8 @@ The graph is hidden while the clip plays and shown only on the reveal screen.
 ```
 src/
   types.ts         Shared types: Graph, Sonification, Question, QuizResult, LessonPhase
-  data/            graphs.ts (10 graphs), questions.ts (10 questions)
+  data/            graphs.ts and questions.ts (10 tutorial + 10 test examples each)
+  graph/           shared coordinate policy and human-readable graph/unit descriptions
   audio/           sonification.ts (graph -> notes, pure TS, tested), piano.ts (Tone.js),
                    speech.ts (spoken preamble), usePlayer.ts (React hook)
   quiz/            quiz.ts (shuffle / validate / score, pure TS, tested)
@@ -85,42 +87,59 @@ src/
 Dependency direction: `types.ts` <- `data`, `audio`, `quiz` <- `components` <- `App`.
 Pure modules (`audio/sonification.ts`, `quiz/quiz.ts`) never import React or the DOM.
 
-## The protocol (v0)
+## Graph context and protocol
 
-Given a series of `(x, y)` points, `sonify()` produces:
+`sonify()` preserves raw graph coordinates and values. Pitch remains trough-anchored,
+chromatic by default (C3–C6), with the same nice-number units-per-step policy.
+The default sequence is six seconds. Each original observation is included.
 
-1. **Preamble** (spoken and shown):
-   - the clip length in seconds,
-   - the trough (lowest value) and its note,
-   - the peak (highest value) and its note,
-   - the starting value and its note,
-   - how many data units one whole step (2 semitones) represents.
-2. **Notes**: one piano note per point, evenly spaced across the clip.
+`buildPreamble()` uses descriptive sentences: graph title; x/y meanings, units and
+x endpoints; labeled minimum, maximum and starting values with reference notes;
+units per pitch step; and playback-to-axis mapping. Unit metadata expands `k`,
+`$M`, `k$`, `°F` and `%` into meaningful quantities without altering raw values.
+Sentences are separate speech utterances so long context is not cut off by the
+speech watchdog. Extrema positions are never included in default narration.
 
-Pitch mapping:
+Coordinate policy lives in `src/graph/coordinates.ts`:
 
-```
-trough  -> lowestMidi  (default C3)
-midi(y) =  lowestMidi + 2 * round((y - trough) / unitsPerWholeStep)
-```
+- Numeric axes allocate time proportionally to actual numeric x-distance,
+  including irregularly spaced observations.
+- Categorical axes allocate equal time between ordered observations. They require
+  labels and default to held steps. Linear estimates require explicit
+  `interpolation: 'linear'`; shipped temporal categories explicitly retain their
+  existing linear interpolation. Unordered categories must not be interpreted as
+  continuous quantities without a research decision.
+- The final observation occupies the last note slot, preserving existing shipped
+  sequence timing. Narration explains when it is reached and held. Existing piano
+  release tails can extend beyond the nominal sequence.
+- Discrete piano notes use sample-and-hold. Stop captures the latest sampled
+  coordinate reached on the audio clock, including interpolated source values;
+  it does not round to an original observation or derive values from quantized
+  MIDI. It reports no coordinate before graph audio starts. Overlapping release
+  tails can coexist, so announcements explicitly say “latest sampled position.”
+- Chart geometry, sampled playheads, tables and speech use the same coordinate and
+  formatting helpers. Categorical estimates are described as a fraction between
+  named observations, not invented calendar dates. Presentation rounds values
+  to six decimal places (retaining significant digits for very small values),
+  and durations/category percentages to two; raw numbers remain unchanged.
 
-`unitsPerWholeStep` is picked automatically as the smallest "nice" number
-(1, 2, 2.5, 5 × 10^k) that keeps the peak at or below `highestMidi` (default C6),
-so the preamble can say things like "each whole step is 5 degrees". It can be
-overridden per call.
+Tutorial and Test require a natural full playback before answering. Test hides
+both the SVG and full observation data until after an answer; pre-answer context
+contains only the metadata, endpoint labels and reference values already allowed
+by the preamble. Onboarding uses a tutorial example, not a scored Test stimulus.
+Graph reveals and Playground include keyboard-accessible observation tables.
+Stopped-position text persists and is not a live region competing with app speech.
 
-Defaults live in `src/types.ts` (`DEFAULT_OPTIONS`). Change the protocol in
-`src/audio/sonification.ts`, update the tests, and the UI follows.
+### Research decisions still open
 
-### Open questions for the group
-
-- Should the trough always anchor to C3, or should the *start* value anchor to a
-  fixed note so every clip begins on the same pitch?
-- Fixed clip length vs. fixed time per point (long series get long clips)?
-- Quantising to whole steps loses resolution on dense series. Do we want an
-  optional continuous (glissando) mode for comparison in the study?
-- Should repeated equal values be one held note or repeated taps?
-- Preamble wording: `describePreamble()` is the single source of truth. Edit it there.
+- Whether and when to replace individual existing linear stimuli with held steps.
+  The existing tutorial “Step change” is still linearly connected; its stimulus
+  wording requires research review rather than a silent protocol change.
+- Optimal narration length, unit wording, categorical estimation terminology,
+  and precision for spoken stopped positions.
+- Fixed duration versus fixed time per observation, pitch anchoring/range,
+  continuous sound, and independent reference controls.
+- Whether assistance policies permit exact coordinate lookup during scored trials.
 
 ## Contributing (team conventions)
 

@@ -202,3 +202,37 @@ describe('session-owned piano', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 })
+
+describe('audio-clock coordinate capture', () => {
+  it('has no coordinate during reference notes or before scheduled graph onset', async () => {
+    const { createPianoSession } = await import('./piano.ts')
+    const abort = new AbortController()
+    const piano = await createPianoSession(abort.signal)
+    const reference = piano.playNote('C3', 450)
+    expect(piano.getPosition()).toBeNull()
+    await vi.advanceTimersByTimeAsync(510)
+    await reference
+    const done = piano.playGraph(s, vi.fn())
+    const rejected = expect(done).rejects.toMatchObject({ name: 'AbortError' })
+    expect(piano.getPosition()).toBeNull()
+    abort.abort()
+    await rejected
+    expect(piano.getPosition()).toBeNull()
+  })
+  it('captures the current sample without running React highlight timers', async () => {
+    const { createPianoSession } = await import('./piano.ts')
+    const abort = new AbortController()
+    const piano = await createPianoSession(abort.signal)
+    const onNote = vi.fn()
+    const done = piano.playGraph(s, onNote)
+    const rejected = expect(done).rejects.toMatchObject({ name: 'AbortError' })
+    const t0 = audio.sources[0].start.mock.calls[0][0] as number
+    audio.clock = t0 + (s.notes[1].startMs + 0.01) / 1000
+    expect(onNote).not.toHaveBeenCalled()
+    expect(piano.getPosition()).toMatchObject({ index: 1, x: s.notes[1].x, value: s.notes[1].value })
+    await vi.advanceTimersByTimeAsync(150)
+    expect(onNote.mock.calls.every(([index]) => index === 1)).toBe(true)
+    abort.abort()
+    await rejected
+  })
+})

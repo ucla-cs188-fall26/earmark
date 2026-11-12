@@ -8,13 +8,16 @@
  * question (and record the count), keyboard shortcuts (space = play).
  */
 import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react'
+import { chartPosition } from '../graph/coordinates.ts'
 import { buildPreamble, sonify } from '../audio/sonification.ts'
 import { usePlayer } from '../audio/usePlayer.ts'
-import { getGraph, xTickLabel } from '../data/graphs.ts'
+import { getGraph } from '../data/graphs.ts'
 import { QUESTIONS, TEST_QUESTIONS } from '../data/questions.ts'
 import { checkAnswer, orderQuestions, scoreAnswers } from '../quiz/quiz.ts'
 import { INITIAL_LISTENING, listeningReducer } from '../quiz/listening.ts'
 import type { AnswerRecord, LessonPhase } from '../types.ts'
+import { ProtocolSummary } from './ProtocolSummary.tsx'
+import { StoppedPosition } from './StoppedPosition.tsx'
 import { GraphReveal } from './GraphReveal.tsx'
 import { ProgressBar } from './ProgressBar.tsx'
 import { ProtocolIntro } from './ProtocolIntro.tsx'
@@ -43,7 +46,7 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
   const current = answers.find((a) => a.questionId === question?.id) ?? null
 
   const restart = () => {
-    player.stop()
+    player.reset()
     setQuestions(orderQuestions(questionBank))
     setAnswers([])
     dispatchListening({ type: 'reset' })
@@ -51,7 +54,7 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
   }
 
   const goToQuestion = (index: number) => {
-    player.stop()
+    player.reset()
     dispatchListening({ type: 'reset' })
     if (index >= questions.length) setPhase({ kind: 'results' })
     else setPhase({ kind: 'question', index, stage: 'listen' })
@@ -65,16 +68,6 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
     void request.finished.then((outcome) => {
       if (mounted.current) dispatchListening({ type: 'settled', generation, outcome: outcome.kind })
     })
-  }
-
-  /** Stop, then say where we were: "Apr, 14.8". */
-  const stopAndAnnounce = () => {
-    const note = sonification?.notes[player.activeIndex]
-    player.stop()
-    if (note && graph) {
-      const point = graph.points[note.pointIndex]
-      player.announce(`${xTickLabel(graph, note.pointIndex)}, ${Number(point.y.toFixed(2))}`)
-    }
   }
 
   const answer = (chosenIndex: number) => {
@@ -94,14 +87,15 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
 
   if (!question || !graph || !sonification) return null
   const busy = player.status !== 'idle' && player.status !== 'error'
-  const activePoint = sonification.notes[player.activeIndex]?.pointIndex ?? -1
+  const activePosition = chartPosition(sonification, player.activeIndex, player.stoppedPosition)
 
   return (
     <section className="lesson">
+      <ProtocolSummary graph={graph} sonification={sonification} />
       <ProgressBar current={phase.index + 1} total={questions.length} />
 
       <div className="controls">
-        <button type="button" onClick={busy ? stopAndAnnounce : () => void play()}>
+        <button type="button" onClick={busy ? () => player.stopAndAnnounce(graph) : () => void play()}>
           {busy ? 'Stop' : listening.attempted ? 'Replay' : 'Play'}
         </button>
       </div>
@@ -112,6 +106,7 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
           : listening.attempted && !busy ? 'Playback did not complete. Replay the entire graph to answer.'
           : 'Listen to the entire graph before answering. Answers become available when playback finishes.'}
       </p>
+      <StoppedPosition graph={graph} position={player.stoppedPosition} />
       {player.error && <p role="alert">{player.error}</p>}
 
       <QuestionCard
@@ -124,7 +119,7 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
 
       {phase.stage === 'reveal' && (
         <>
-          <GraphReveal graph={graph} sonification={sonification} activeIndex={activePoint} />
+          <GraphReveal graph={graph} sonification={sonification} activePosition={activePosition} />
           <button type="button" onClick={() => goToQuestion(phase.index + 1)}>
             {phase.index + 1 < questions.length ? 'Next question' : 'See results'}
           </button>

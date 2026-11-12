@@ -1,4 +1,4 @@
-import type { PreambleItem, Sonification } from '../types.ts'
+import type { PlaybackPosition, PreambleItem, Sonification } from '../types.ts'
 import { createPianoSession, type PianoSession } from './piano.ts'
 import { speak } from './speech.ts'
 
@@ -19,6 +19,7 @@ export interface PlayerSnapshot {
   status: PlayerStatus
   activeIndex: number
   error: string | null
+  stoppedPosition: PlaybackPosition | null
 }
 interface Session {
   id: number
@@ -32,7 +33,7 @@ export class PlaybackController {
   private generation = 0
   private session: Session | null = null
   private listeners = new Set<() => void>()
-  private snapshot: PlayerSnapshot = { status: 'idle', activeIndex: -1, error: null }
+  private snapshot: PlayerSnapshot = { status: 'idle', activeIndex: -1, error: null, stoppedPosition: null }
   getSnapshot = () => this.snapshot
   subscribe = (listener: () => void) => {
     this.listeners.add(listener)
@@ -53,12 +54,20 @@ export class PlaybackController {
     previous?.abort.abort()
     previous?.piano?.dispose()
   }
-  stop = () => {
+  getPosition = () => this.session?.piano?.getPosition() ?? null
+  stop = (): PlaybackPosition | null => {
+    // Capture from the audio clock BEFORE abort disconnects/disposes the sources.
+    const position = this.getPosition()
     this.cancel()
-    this.update({ status: 'idle', activeIndex: -1, error: null })
+    this.update({ status: 'idle', activeIndex: -1, error: null, stoppedPosition: position ?? this.snapshot.stoppedPosition })
+    return position
+  }
+  reset = () => {
+    this.stop()
+    this.update({ stoppedPosition: null })
   }
   private begin(): Session {
-    this.stop()
+    this.reset()
     const session = { id: this.generation, abort: new AbortController() }
     this.session = session
     return session
@@ -120,7 +129,9 @@ export class PlaybackController {
   }
   /** Stop-position speech participates in the same replacement/unmount lifecycle. */
   announce = (text: string) => {
+    const stoppedPosition = this.snapshot.stoppedPosition
     const session = this.begin()
+    this.update({ stoppedPosition })
     void speak(text, session.abort.signal).then(() => {
       if (this.current(session)) this.session = null
     }, () => this.fail(session))
