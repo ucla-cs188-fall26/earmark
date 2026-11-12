@@ -1,3 +1,4 @@
+import { GraphControls } from './GraphControls.tsx'
 import { NarrationControls } from './NarrationControls.tsx'
 /**
  * The lesson state machine. Connects graphs (P1), audio (P2) and quiz (P3).
@@ -107,6 +108,7 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
           : listening.attempted && !busy ? 'Playback did not complete. Replay the entire graph to answer.'
           : 'Listen to the entire graph before answering. Answers become available when playback finishes.'}
       </p>
+      <GraphControls player={player} graph={graph} eligible={hasListened} requiresFullListening onReplay={() => void play()} />
       <NarrationControls player={player} preamble={buildPreamble(sonification, graph)} />
       <StoppedPosition graph={graph} position={player.stoppedPosition} />
       {player.error && <p role="alert">{player.error}</p>}

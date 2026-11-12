@@ -236,3 +236,21 @@ describe('audio-clock coordinate capture', () => {
     await rejected
   })
 })
+
+describe('timed graph navigation', () => {
+  it('uses rate only for timeline scheduling, not source pitch', async () => {
+    const { createPianoSession } = await import('./piano.ts')
+    const abort = new AbortController(), piano = await createPianoSession(abort.signal)
+    const offsetMs = s.notes[10].startMs
+    const done = piano.playGraph(s, vi.fn(), { offsetMs, speed: 1.5 })
+    const rejected = expect(done).rejects.toMatchObject({ name: 'AbortError' })
+    const onset = audio.sources[0].start.mock.calls[0][0] as number
+    expect(audio.sources).toHaveLength(s.notes.length - 10)
+    const nearest = [48,51,54,57,60,63,66,69,72,75,78,81,84].sort((a,b)=>Math.abs(a-s.notes[10].midi)-Math.abs(b-s.notes[10].midi))[0]
+    expect(audio.sources[0].playbackRate.value).toBeCloseTo(2 ** ((s.notes[10].midi-nearest)/12))
+    expect(piano.getPosition()).toBeNull()
+    audio.clock=onset+0.5
+    expect(piano.getPosition()?.elapsedMs).toBeCloseTo(offsetMs+750)
+    abort.abort();await rejected;expect(vi.getTimerCount()).toBe(0)
+  })
+})

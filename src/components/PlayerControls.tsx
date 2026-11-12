@@ -13,6 +13,7 @@ const LABEL: Record<PlayerStatus, string> = {
   speaking: 'Speaking preamble…',
   loading: 'Loading piano…',
   playing: 'Playing…',
+  paused: 'Paused',
   error: 'Play',
 }
 

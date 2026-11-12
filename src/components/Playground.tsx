@@ -1,3 +1,4 @@
+import { GraphControls } from './GraphControls.tsx'
 import { NarrationControls } from './NarrationControls.tsx'
 /**
  * Engine test page (#playground): pick any graph, play it, inspect the notes.
@@ -52,7 +53,8 @@ export function Playground() {
       <section className="stage">
         <ProtocolSummary graph={series} sonification={sonification} />
         <LineChart series={series} activePosition={chartPosition(sonification, player.activeIndex, player.stoppedPosition)} />
-        <NarrationControls player={player} preamble={preamble} />
+        <GraphControls player={player} graph={series} onReplay={() => { void player.play(sonification, speakPreamble ? preamble : undefined) }} />
+      <NarrationControls player={player} preamble={preamble} />
         <StoppedPosition graph={series} position={player.stoppedPosition} />
         <DataTable graph={series} />
         {player.error && <p role="alert">{player.error}</p>}

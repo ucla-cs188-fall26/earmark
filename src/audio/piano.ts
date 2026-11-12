@@ -24,9 +24,10 @@ async function loadSamples(signal: AbortSignal): Promise<Map<number, AudioBuffer
   })))
 }
 
+export interface GraphPlaybackOptions { offsetMs?: number; speed?: number }
 export interface PianoSession {
   playNote: (name: string, ms: number) => Promise<void>
-  playGraph: (s: Sonification, onNote: (index: number) => void) => Promise<void>
+  playGraph: (s: Sonification, onNote: (index: number) => void, options?: GraphPlaybackOptions) => Promise<void>
   dispose: () => void
   getPosition: () => PlaybackPosition | null
 }
@@ -53,9 +54,9 @@ export async function createPianoSession(signal: AbortSignal): Promise<PianoSess
   const voices = new Set<{ source: AudioBufferSourceNode; envelope: Tone.Gain }>()
   const timers = new Set<ReturnType<typeof setTimeout>>()
   let disposed = false
-  let graphTimeline: { s: Sonification; t0: number } | null = null
+  let graphTimeline: { s: Sonification; t0: number; offsetMs: number; speed: number } | null = null
   const getPosition = () => disposed || !graphTimeline ? null
-    : positionAtTime(graphTimeline.s, (Tone.immediate() - graphTimeline.t0) * 1000)
+    : Tone.immediate() < graphTimeline.t0 ? null : positionAtTime(graphTimeline.s, graphTimeline.offsetMs + (Tone.immediate() - graphTimeline.t0) * 1000 * graphTimeline.speed)
 
   const dispose = () => {
     if (disposed) return
@@ -127,14 +128,21 @@ export async function createPianoSession(signal: AbortSignal): Promise<PianoSess
       void note(name, ms, Tone.now() + 0.02)
       await wait(ms + 60)
     },
-    playGraph(s, onNote) {
+    playGraph(s, onNote, options = {}) {
+      const offsetMs = Math.max(0, Math.min(s.durationMs, options.offsetMs ?? 0))
+      const speed = options.speed ?? 1
+      if (!(speed > 0) || !Number.isFinite(speed)) throw new Error('Invalid playback speed')
       const t0 = Tone.now() + 0.05
-      graphTimeline = { s, t0 }
+      graphTimeline = { s, t0, offsetMs, speed }
       const ended: Promise<void>[] = []
+      const currentIndex = positionAtTime(s, offsetMs)?.index ?? 0
       for (const n of s.notes) {
-        ended.push(note(n.name, n.durationMs, t0 + n.startMs / 1000))
+        if (n.index < currentIndex) continue
+        const startMs = Math.max(0, n.startMs - offsetMs) / speed
+        const durationMs = Math.max(0, n.startMs + n.durationMs - Math.max(offsetMs, n.startMs)) / speed
+        ended.push(note(n.name, durationMs, t0 + startMs / 1000))
         // Read the clock when a callback runs; delayed timers cannot rewind the highlight.
-        at(Math.max(0, (t0 - Tone.immediate()) * 1000 + n.startMs), () => {
+        at(Math.max(0, (t0 - Tone.immediate()) * 1000 + startMs), () => {
           const position = getPosition()
           if (position) onNote(position.index)
         })
@@ -144,7 +152,7 @@ export async function createPianoSession(signal: AbortSignal): Promise<PianoSess
       // Recheck the clock because a suspended context does not advance with time.
       const timelineEnd = new Promise<void>((resolve) => {
         const check = () => {
-          const remaining = (t0 + s.durationMs / 1000 - Tone.immediate()) * 1000
+          const remaining = (t0 + (s.durationMs - offsetMs) / speed / 1000 - Tone.immediate()) * 1000
           if (remaining <= 0) resolve()
           else at(Math.max(1, Math.min(remaining, 100)), check)
         }

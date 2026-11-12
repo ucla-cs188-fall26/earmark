@@ -549,3 +549,28 @@ checks passed. In a fresh browser context with speech held by a mock, keyboard-n
 controls navigated/paused/resumed/replayed, skip left answers disabled, and only
 natural graph completion enabled answers. Real piano audio was used. This is not
 manual screen-reader verification; browser speech pronunciation remains untested.
+
+## Roadmap — Graph playback navigation and speed
+
+Branch `feat/graph-playback-navigation`, stacked on narration navigation. Added
+pause/resume, backward/forward one normal-speed second, replay-current-second,
+full replay, 0.5/0.75/1/1.25/1.5× speeds and on-request position speech. Position
+speech pauses piano to avoid competing sound; Resume continues. Guide times are
+explicitly 1×. Timings/durations scale, never sample pitch rates. Each resumed or
+sought rendering owns a new child abort signal and voices; stale loads, callbacks
+and ends are ignored. Paused coordinates are stable. Piano resume rearticulates
+the current note rather than claiming waveform-exact continuity.
+
+Eligibility policy: pause and speed changes retain a contiguous full run. ANY seek
+or segment replay cancels that run's completion outcome, even if it later reaches
+the end. A fresh full replay is necessary to earn eligibility; the lesson reducer
+retains eligibility already earned. This conservative policy needs Prof. Jun's
+review before controlled studies. Parent Stop/unmount cancels every child. No
+coordinates are fabricated by pausing before the first graph onset.
+
+All 120 tests, lint, typecheck, build and diff checks passed. New regressions cover
+paused continuation, speed/pitch separation, clamped paused seeks, seeking-to-end,
+stale resumed loads, audio-clock offsets and Stop. In a fresh browser with mocked
+speech and real piano, pause and 1.5× playback worked; six forward seeks to the end
+left Test choices locked, while a fresh full replay unlocked them. This is browser
+interaction testing, not manual AT or physical audio-latency certification.

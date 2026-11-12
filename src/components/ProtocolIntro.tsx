@@ -1,3 +1,4 @@
+import { GraphControls } from './GraphControls.tsx'
 import { NarrationControls } from './NarrationControls.tsx'
 import { chartPosition } from '../graph/coordinates.ts'
 import { GRAPHS } from '../data/graphs.ts'
@@ -20,7 +21,8 @@ export function ProtocolIntro({ player, onStart, mode = 'tutorial' }: { player: 
     <p>Press Stop to hear your position and value. A position is available only after graph audio begins. Listen to a complete graph before answering; stopping early keeps answers unavailable. You may replay as often as you like.</p>
     <ProtocolSummary graph={sample} sonification={sonification} headingLevel={3} />
     {mode === 'tutorial' && <><LineChart series={sample} activePosition={chartPosition(sonification, player.activeIndex, player.stoppedPosition)} /><DataTable graph={sample} /></>}
-    <NarrationControls player={player} preamble={preamble} />
+    <GraphControls player={player} graph={sample} onReplay={() => { void player.play(sonification, preamble) }} />
+      <NarrationControls player={player} preamble={preamble} />
     <StoppedPosition graph={sample} position={player.stoppedPosition} />
     {player.error && <p role="alert">{player.error}</p>}
     <div className="controls">
