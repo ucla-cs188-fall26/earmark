@@ -427,3 +427,109 @@ lookup is permitted in scored tasks. Numeric/categorical timing and interpolatio
 are now explicit rather than silently inferred from index rounding. The new context
 and narration should be versioned as a changed study condition before participant
 comparisons, even though all existing piano pitch sequences are preserved.
+
+## Simplify graph information and spoken narration
+
+Date: 2026-11-12
+Base: latest fetched `main`, `cebe03efdfec9279438483a0cc655c4815d84863`.
+Branch: `simplify/graph-information-and-narration`.
+
+### User-facing changes
+
+The visual panel now has five rows: vertical meaning/units, lowest/highest values,
+starting value, Y units per semitone, and X-to-audio mapping. Spoken narration uses
+the same brief mapping and pitch reference. Graph titles still identify the graph;
+operational Stop/listen/replay instructions remain available. Removed introductory
+explanations of interpolation, sampled-note internals, release tails, pitch rounding,
+and audio clocks. The underlying technical policies remain documented in README.
+
+The guide explicitly separates X/time spacing from Y changes: Y can change by
+different amounts between successive observations. It does not announce the actual
+observation changes in scored trials or imply a constant slope.
+
+The recorded-data view now includes labeled From/To selectors and a keyboard-
+operable Compare values button. Its requested result describes the Y increase,
+decrease or unchanged value with expanded units. Changing the selections clears
+old results; changing graphs resets the comparison. This view remains restricted
+to permitted tutorial views, Playground and post-answer reveals. It is not mounted
+before a Test answer, even when the participant has finished listening.
+
+### Generated mapping policy (developer details)
+
+`src/graph/mapping.ts` calculates from the actual generated notes, rather than a
+graph ID, duration default or assumed note density:
+
+- X span is the difference between final/initial note axis positions, using actual
+  numeric distance or ordered-category positions as appropriate.
+- Note intervals per X unit = `(notes.length - 1) / span`.
+- Playback seconds per X unit = `(last.startMs - first.startMs) / 1000 / span`.
+- Y units per semitone = `unitsPerStep / stepSemitones`, formatted with the graph's
+  unit scale. This is calibration, not the observed Y change between two notes.
+
+Uniform spacing is checked against every generated interval. Nonuniform mapping
+is labeled as an average; a single observation has no horizontal interval. Tiny
+positive mappings are not formatted as zero. Reference and comparison quantities
+use singular units when the expanded quantity is one.
+
+For the current flu-symptoms graph, 56 notes span 11 weeks: 55 note intervals,
+5 intervals/week, 0.5357142857 seconds/week (approximately 0.54), and one semitone
+per search interest index point. The last note's start time is used: full-duration
+6/11 would incorrectly round to 0.55 by including the final hold. No flu-specific
+values or identifiers occur in the mapping implementation.
+
+### Verification
+
+Local Node 26.7.0 / npm 11.19.0:
+
+| Check | Result |
+| --- | --- |
+| `npm run lint` | Passed |
+| `npm run typecheck` | Passed |
+| `npm test` | 11 files, 110 tests passed; 12 additional mapping/change tests |
+| `npm run build` | Passed; Vite 8.3.6 |
+| `git diff --check` | Passed |
+
+Regression tests cover the exact generated flu mapping; changed note counts,
+attack times, duration and density; irregular numeric distances; categorical keys;
+single observations; nondefault pitch grids and unit scales; agreement between
+panel and speech; absence of implementation explanations; varying positive/negative,
+nonadjacent, reversed and zero observation changes; and absence of comparisons
+from pre-answer context/Test onboarding. Existing narration assertions were updated
+to the new wording. Playback/cancellation/eligibility regressions still pass.
+
+A direct baseline comparison of all 20 library graphs found byte-for-byte identical
+serialized Sonification outputs and identical reference-note items (including note
+lengths). No playback controller, piano, speech engine, coordinate evaluator,
+graph-data or question-bank file was changed. No dependencies were added.
+
+### Browser evidence
+
+Verified the full guide → speech → playback → answer → comparison flow in a fresh
+isolated browser context, with real React Strict Mode and piano audio. Speech
+completion was mocked and its utterances captured; shuffle was controlled to put
+the flu-symptoms graph first. An earlier attempt inherited old page-level test
+stubs and timed out; it was discarded and rerun in the isolated context.
+
+- Before answering, the flu panel had exactly five rows and displayed 5 note
+  intervals / approximately 0.54 seconds per week and 1 index point per semitone.
+  There were zero comparison selectors, zero SVGs, and disabled answer choices.
+- Captured speech contained the same mapping and variable-Y explanation, without
+  interpolation, release-tail, rounding or clock explanations.
+- Natural full playback enabled answers. After answering and opening recorded
+  data, keyboard submission reported Week 7→8 as +5 index points. Week 8→9
+  reported +6, demonstrating that time spacing is not a fixed Y change. Selection
+  changes cleared the previous result.
+- Playground comparison remained available; selecting a different graph cleared
+  its result. At a 320 CSS-pixel viewport, tested document scrollWidth was 305
+  (no horizontal document overflow). Screenshot inspection confirmed the compact
+  panel retained semantic headings, five labeled rows and readable units.
+- A Stop smoke check using an analyser connected through the app's actual Tone
+  import measured piano RMS 0.0829246437 before Stop and 0 at 150 ms after Stop;
+  the stopped coordinate remained visible. An initial early measurement had no
+  nonzero baseline and was not counted as evidence.
+
+Applied the React best-practices and full-flow verification skills. Browser
+artifacts are outside the repository. These checks are single-engine interaction
+checks with mocked speech completion, not screen-reader/pronunciation testing or
+acoustic latency certification. Actual comparative study effects of shorter
+narration remain a research question.

@@ -93,12 +93,31 @@ Pure modules (`audio/sonification.ts`, `quiz/quiz.ts`) never import React or the
 chromatic by default (C3–C6), with the same nice-number units-per-step policy.
 The default sequence is six seconds. Each original observation is included.
 
-`buildPreamble()` uses descriptive sentences: graph title; x/y meanings, units and
-x endpoints; labeled minimum, maximum and starting values with reference notes;
-units per pitch step; and playback-to-axis mapping. Unit metadata expands `k`,
-`$M`, `k$`, `°F` and `%` into meaningful quantities without altering raw values.
-Sentences are separate speech utterances so long context is not cut off by the
-speech watchdog. Extrema positions are never included in default narration.
+The user-facing panel and `buildPreamble()` share a short guide: vertical meaning
+and measurement units; minimum/maximum and starting values; Y units per semitone;
+and note intervals/playback seconds per horizontal-axis unit. Graph titles remain
+as identification. The introduction does not discuss interpolation, sampled-note
+implementation, pitch rounding, audio clocks or release tails. Those details are
+recorded below for developers. Extrema locations and observation-by-observation
+changes are not included in the pre-answer guide.
+
+`src/graph/mapping.ts` calculates mapping from the actual generated sequence:
+
+- Let `span` be the difference between the final and initial note's axis positions
+  (actual numeric x-distance, or ordered-category distance).
+- Note intervals per X unit = `(notes.length - 1) / span`.
+- Playback seconds per X unit = `(last.startMs - first.startMs) / 1000 / span`.
+- Y units per semitone = `unitsPerStep / stepSemitones`, with the graph's display
+  scale applied when formatting. This is a pitch scale, not a constant Y change
+  between observations.
+
+The final hold is not another X interval. For the current flu-symptoms sequence,
+56 notes produce 55 note intervals across 11 weeks: 5 intervals per week.
+The last observation starts at about 5892.857 ms, giving 0.535714 seconds per week
+(displayed as approximately 0.54). Dividing the full 6-second duration by 11 would
+incorrectly include the final hold. If generated spacing varies, the guide labels
+its per-unit mapping as an average. A single observation has no horizontal interval.
+These numbers are examples, not constants used by the implementation.
 
 Coordinate policy lives in `src/graph/coordinates.ts`:
 
@@ -110,8 +129,8 @@ Coordinate policy lives in `src/graph/coordinates.ts`:
   existing linear interpolation. Unordered categories must not be interpreted as
   continuous quantities without a research decision.
 - The final observation occupies the last note slot, preserving existing shipped
-  sequence timing. Narration explains when it is reached and held. Existing piano
-  release tails can extend beyond the nominal sequence.
+  sequence timing. This hold and the existing piano release tails remain developer
+  details; the introductory guide reports observation-to-observation timing.
 - Discrete piano notes use sample-and-hold. Stop captures the latest sampled
   coordinate reached on the audio clock, including interpolated source values;
   it does not round to an original observation or derive values from quantized
@@ -125,10 +144,15 @@ Coordinate policy lives in `src/graph/coordinates.ts`:
 
 Tutorial and Test require a natural full playback before answering. Test hides
 both the SVG and full observation data until after an answer; pre-answer context
-contains only the metadata, endpoint labels and reference values already allowed
-by the preamble. Onboarding uses a tutorial example, not a scored Test stimulus.
+contains only the brief units/reference-values/mapping guide. Onboarding uses a tutorial example, not a scored Test stimulus.
 Graph reveals and Playground include keyboard-accessible observation tables.
 Stopped-position text persists and is not a live region competing with app speech.
+Inside the recorded-data view, a labeled two-observation comparison reports the
+specific Y increase/decrease with expanded units. It supports adjacent or arbitrary
+pairs, clears its result when selections/graph change, and announces only requested
+results. That view is not mounted before a scored answer, preventing early disclosure
+of exact observation changes. The guide explains that Y can change by different
+amounts between observations without stating which changes occur in a scored graph.
 
 ### Research decisions still open
 

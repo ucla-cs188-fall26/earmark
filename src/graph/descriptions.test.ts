@@ -4,11 +4,10 @@ import { buildPreamble, preambleText, sonify } from '../audio/sonification.ts'
 import { describeAxes, describeMapping, describeStop, formatValue, formatX } from './descriptions.ts'
 
 describe('descriptive graph context', () => {
-  it('expands months and thousands and labels all reference notes without changing raw data', () => {
+  it('expands units and thousands and labels all reference notes without changing raw data', () => {
     const g = getGraph('test-ambiguous-rise'), original = JSON.stringify(g)
     const text = preambleText(buildPreamble(sonify(g), g))
-    expect(text).toContain('from January to December')
-    expect(text).toContain('12 ordered observations')
+    expect(text).toContain('One month on the horizontal axis corresponds to 5 note intervals')
     expect(text).toContain('thousands of users')
     expect(text).toContain('lowest recorded value is 42,000 users')
     expect(text).toContain('highest recorded value is 58,000 users')
@@ -30,11 +29,11 @@ describe('descriptive graph context', () => {
   it.each([['test-multi-peak', 70, '70,000,000 dollars'], ['test-reverse-wave', 60, '60,000 dollars'], ['temperature', 34, '34 degrees Fahrenheit'], ['test-final-dip', 65, '65 percent']] as const)('expands units for %s', (id, raw, expected) => {
     expect(formatValue(getGraph(id), raw)).toBe(expected)
   })
-  it('provides axes, ranges, units and a labeled duration for every library graph', () => {
+  it('provides vertical units, ranges and note/time mapping for every library graph', () => {
     for (const g of GRAPH_LIBRARY) {
       const s = sonify(g), text = preambleText(buildPreamble(s, g))
       expect(describeAxes(g)).toHaveLength(2)
-      for (const label of [g.title, 'horizontal axis', 'vertical axis', 'lowest recorded value', 'highest recorded value', '6 seconds']) expect(text).toContain(label)
+      for (const label of [g.title, 'horizontal axis', 'vertical axis', 'lowest recorded value', 'highest recorded value', 'seconds of playback']) expect(text).toContain(label)
       expect(text).not.toContain('undefined')
       for (const item of buildPreamble(s, g)) if ('say' in item) expect(item.say.length).toBeLessThan(250)
     }
@@ -47,15 +46,16 @@ describe('descriptive graph context', () => {
     expect(text).toContain('Temperature: 64.5 degrees Fahrenheit')
     expect(text).toContain('estimate between recorded observations')
   })
-  it('explains numerical duration-to-domain mapping and categorical step sampling', () => {
+  it('describes numeric units and categorical timing without implementation details', () => {
     const numeric = { ...getGraph('rising'), xUnit: 'seconds' }
-    expect(describeMapping(numeric, sonify(numeric))).toContain('Equal numeric distances')
+    expect(describeMapping(numeric, sonify(numeric))).toContain('One second on the horizontal axis corresponds to')
     const categories = { ...getGraph('temperature'), interpolation: 'step' as const }
-    expect(describeMapping(categories, sonify(categories))).toContain('Values are held until the next observation')
+    expect(describeMapping(categories, sonify(categories))).toContain('5 note intervals')
     expect(formatX(categories, 3.5)).toBe('April, held until May')
   })
   it('describes the configured pitch interval, not an assumed semitone', () => {
     const g = getGraph('rising'), s = sonify(g, { stepSemitones: 2 })
-    expect(preambleText(buildPreamble(s, g))).toContain('Each 2-semitone step')
+    expect(preambleText(buildPreamble(s, g))).toContain(`Each semitone represents ${formatValue(g, s.unitsPerStep / 2)}`)
+    expect(preambleText(buildPreamble(s, g))).toContain('two notes 2 semitones apart')
   })
 })

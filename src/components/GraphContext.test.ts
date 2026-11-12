@@ -15,7 +15,10 @@ const graph = getGraph('temperature'), s = sonify(graph)
 describe('accessible graph context rendering', () => {
   it('provides pre-answer context without the visual graph or full observation table', () => {
     const html = renderToStaticMarkup(createElement(ProtocolSummary, { graph, sonification: s }))
-    expect(html).toContain('Horizontal axis')
+    expect(html).toContain('X-to-audio mapping')
+    expect((html.match(/<dt>/g) ?? [])).toHaveLength(5)
+    expect(html).not.toContain('Inspect the Y change')
+    expect(html).not.toMatch(/interpolat|sampled notes|release tails|pitch rounding|audio.clock/i)
     expect(html).toContain('Vertical axis')
     expect(html).toContain('degrees Fahrenheit')
     expect(html).not.toContain('<svg')
@@ -28,6 +31,9 @@ describe('accessible graph context rendering', () => {
     expect(html).toContain('January')
     expect(html).toContain('34 degrees Fahrenheit')
     expect(html).toContain('scope="col"')
+    expect(html).toContain('Inspect the Y change between two observations')
+    expect(html).toContain('From observation')
+    expect(html).toContain('To observation')
   })
   it('keeps test onboarding free of the scored stimulus and chart', () => {
     const player: Player = { status: 'idle', activeIndex: -1, error: null, stoppedPosition: null, play: vi.fn(), stop: vi.fn(), reset: vi.fn(), stopAndAnnounce: vi.fn() }
@@ -35,6 +41,7 @@ describe('accessible graph context rendering', () => {
     expect(html).not.toContain('<svg')
     expect(html).not.toContain('<table')
     expect(html).not.toContain('Monthly active users')
+    expect(html).not.toContain('Inspect the Y change')
   })
   it('renders the exact interpolated sample position rather than the nearest source point', () => {
     const g = { ...graph, xLabels: undefined, xKind: 'numeric' as const, points: [{ x: 10, y: 5 }, { x: 11, y: 15 }] }
