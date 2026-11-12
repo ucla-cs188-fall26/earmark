@@ -36,7 +36,7 @@ describe('accessible graph context rendering', () => {
     expect(html).toContain('To observation')
   })
   it('keeps test onboarding free of the scored stimulus and chart', () => {
-    const player: Player = { status: 'idle', activeIndex: -1, error: null, stoppedPosition: null, play: vi.fn(), stop: vi.fn(), reset: vi.fn(), stopAndAnnounce: vi.fn() }
+    const player: Player = { status: 'idle', activeIndex: -1, error: null, stoppedPosition: null, play: vi.fn(), stop: vi.fn(), reset: vi.fn(), stopAndAnnounce: vi.fn(), previousSection: vi.fn(), nextSection: vi.fn(), replaySection: vi.fn(), pauseNarration: vi.fn(), resumeNarration: vi.fn(), skipIntroduction: vi.fn() }
     const html = renderToStaticMarkup(createElement(ProtocolIntro, { player, mode: 'test', onStart: vi.fn() }))
     expect(html).not.toContain('<svg')
     expect(html).not.toContain('<table')

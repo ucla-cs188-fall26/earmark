@@ -154,3 +154,6 @@ export async function createPianoSession(signal: AbortSignal): Promise<PianoSess
     },
   }
 }
+
+// Separate factory name makes reference-session ownership explicit.
+export const createReferenceSession = createPianoSession

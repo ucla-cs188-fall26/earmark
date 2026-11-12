@@ -3,8 +3,8 @@ import type { PianoSession } from './piano.ts'
 import { sonify } from './sonification.ts'
 import { GRAPHS } from '../data/graphs.ts'
 
-const deps = vi.hoisted(() => ({ create: vi.fn(), speak: vi.fn() }))
-vi.mock('./piano.ts', () => ({ createPianoSession: deps.create }))
+const deps = vi.hoisted(() => ({ create: vi.fn(), reference: vi.fn(), speak: vi.fn() }))
+vi.mock('./piano.ts', () => ({ createPianoSession: deps.create, createReferenceSession: deps.reference }))
 vi.mock('./speech.ts', () => ({ speak: deps.speak }))
 import { PlaybackController } from './player.ts'
 const s = sonify(GRAPHS[0])
@@ -20,6 +20,7 @@ function piano() {
 }
 beforeEach(() => {
   deps.create.mockReset()
+  deps.reference.mockReset().mockImplementation(() => Promise.resolve(piano()))
   deps.speak.mockReset().mockResolvedValue(undefined)
 })
 
@@ -66,6 +67,7 @@ describe('playback generations', () => {
     const reference = deferred<void>()
     const old = piano()
     old.playNote.mockReturnValue(reference.promise)
+    deps.reference.mockResolvedValue(old)
     deps.create.mockResolvedValue(old)
     const player = new PlaybackController()
     const pending = player.play(s, [{ note: 48, name: 'C3', ms: 450 }, { say: '5' }])
