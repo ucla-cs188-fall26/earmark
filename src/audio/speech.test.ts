@@ -46,7 +46,7 @@ describe('owned speech cancellation', () => {
   it('cancels stalled speech at its cap before continuing', async () => {
     const done = speak('Test')
     await vi.advanceTimersByTimeAsync(2280)
-    await done
+    expect(await done).toBe('timeout')
     expect(synthesis.cancel).toHaveBeenCalledOnce()
     expect(vi.getTimerCount()).toBe(0)
   })

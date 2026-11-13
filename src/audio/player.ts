@@ -1,3 +1,4 @@
+import type { AudioEvent, AudioEventType } from './events.ts'
 import type { PlaybackPosition, PreambleItem, Sonification } from '../types.ts'
 import { createPianoSession, createReferenceSession, type PianoSession } from './piano.ts'
 import { NarrationTransport, narrationSections, type NarrationState } from './narration.ts'
@@ -8,7 +9,8 @@ import type { Graph } from '../types.ts'
 import { speak } from './speech.ts'
 
 export type SonificationMode = 'piano' | 'continuous'
-export interface PlaybackOptions { mode?: SonificationMode; graph?: Graph }
+export interface PlaybackPermissions { pause:boolean; seek:boolean; position:boolean; skipIntroduction:boolean; speeds:readonly number[] }
+export interface PlaybackOptions { mode?: SonificationMode; graph?: Graph; permissions?: PlaybackPermissions }
 
 export interface PlaybackOutcome {
   kind: 'completed' | 'cancelled' | 'failed'
@@ -27,6 +29,7 @@ export interface PlayerSnapshot {
   status: PlayerStatus
   activeIndex: number
   error: string | null
+  permissions?: PlaybackPermissions
   livePosition?: PlaybackPosition | null
   speed?: number
   needsFullReplay?: boolean
@@ -41,6 +44,8 @@ interface Session {
   s?: Sonification
   graph?: Graph
   mode?: SonificationMode
+  permissions?: PlaybackPermissions
+  terminal?: boolean
   offsetMs?: number
   speed?: number
   graphRevision?: number
@@ -59,6 +64,12 @@ export class PlaybackController {
   private generation = 0
   private session: Session | null = null
   private listeners = new Set<() => void>()
+  private observers = new Set<(event:AudioEvent)=>void>()
+  observe = (listener:(event:AudioEvent)=>void) => { this.observers.add(listener);return()=>{this.observers.delete(listener)} }
+  private emit(type:AudioEventType, details:Omit<AudioEvent,'type'> = {}, session=this.session) {
+    const event:AudioEvent={type,sessionId:session?.id,graphId:session?.s?.graphId,mode:session?.mode,speed:session?.speed??this.snapshot.speed??1,...details}
+    this.observers.forEach(listener=>{try {listener(event)} catch { /* Observers cannot interrupt audio ownership. */ }})
+  }
   private snapshot: PlayerSnapshot = { status: 'idle', activeIndex: -1, error: null, stoppedPosition: null }
   getSnapshot = () => this.snapshot
   subscribe = (listener: () => void) => {
@@ -98,13 +109,15 @@ export class PlaybackController {
   stop = (): PlaybackPosition | null => {
     // Capture from the audio clock BEFORE abort disconnects/disposes the sources.
     const position = this.getPosition()
+    const disclose = this.session?.permissions?.position !== false
+    if (this.session && !['idle','error'].includes(this.snapshot.status)) this.emit('stop', {elapsedMs:position?.elapsedMs})
     this.cancel()
-    this.update({ status: 'idle', activeIndex: -1, error: null, narration: undefined, livePosition: undefined, stoppedPosition: position ?? this.snapshot.stoppedPosition })
+    this.update({ status: 'idle', activeIndex: -1, error: null, narration: undefined, livePosition: undefined, stoppedPosition: disclose ? position ?? this.snapshot.stoppedPosition : null })
     return position
   }
   reset = () => {
     this.stop()
-    this.update({ stoppedPosition: null, needsFullReplay: undefined, livePosition: undefined })
+    this.update({ stoppedPosition: null, needsFullReplay: undefined, livePosition: undefined, permissions: undefined })
   }
   private begin(): Session {
     this.reset()
@@ -129,13 +142,17 @@ export class PlaybackController {
       finished: new Promise((resolve) => { finished = resolve }),
     }
     session.settle = (kind) => {
+      if (session.terminal) return
+      session.terminal = true
+      this.emit(`playback-${kind}`, {}, session)
       if (kind !== 'completed') scheduled({ ...identity, kind })
       finished({ ...identity, kind })
     }
-    session.mode = options.mode ?? 'piano'; session.graph = options.graph
-    session.s = s; session.speed = this.snapshot.speed ?? 1; session.offsetMs = 0; session.fullRun = true
+    session.mode = options.mode ?? 'piano'; session.graph = options.graph; session.permissions = options.permissions
+    session.s = s; session.speed = options.permissions && !options.permissions.speeds.includes(this.snapshot.speed ?? 1) ? 1 : this.snapshot.speed ?? 1; session.offsetMs = 0; session.fullRun = true
     session.scheduled = () => scheduled({ ...identity, kind: 'scheduled' })
-    this.update({ status: 'loading' })
+    this.emit('play', {}, session)
+    this.update({ status: 'loading', permissions: options.permissions, ...(options.permissions ? {speed:session.speed} : {}) })
     void this.run(session, preamble, () => scheduled({ ...identity, kind: 'scheduled' }))
     return request
   }
@@ -156,11 +173,14 @@ export class PlaybackController {
           try {
             for (const item of items) {
               childSignal.throwIfAborted()
-              if ('say' in item) await speak(item.say, childSignal)
+              if ('say' in item) {
+                const result=await speak(item.say,childSignal)
+                if(this.current(session))this.emit('speech-result',{reason:result??'unreported'})
+              }
               else await reference.playNote(item.name, item.ms, item.frequencyHz)
             }
           } finally { reference.dispose() }
-        }, (narration) => { if (this.current(session)) this.update({ narration }) })
+        }, (narration) => { if (this.current(session)) { this.update({ narration }); this.emit('narration-section',{sectionIndex:narration.index,paused:narration.paused}) } })
         await session.narration.run()
         if (!this.current(session)) return
         this.update({ narration: undefined })
@@ -190,6 +210,7 @@ export class PlaybackController {
       }, { offsetMs: session.offsetMs, speed: session.speed })
       this.update({ status: 'playing' })
       session.scheduled?.()
+      this.emit('graph-scheduled',{elapsedMs:session.offsetMs})
       await done
       if (!active()) return
       piano.dispose()
@@ -199,56 +220,62 @@ export class PlaybackController {
       if (active()) this.fail(session)
     }
   }
-  pauseGraph = () => {
+  private pauseAtCurrent(reason: string) {
     const session = this.session
-    if (!session?.graphStarted || this.snapshot.status !== 'playing') return
+    if (!session?.graphStarted || (reason === 'user' && session.permissions?.pause === false) || this.snapshot.status !== 'playing') return
     const position = this.getPosition()
+    this.emit('graph-pause',{elapsedMs:position?.elapsedMs,reason})
     session.offsetMs = Math.min(session.s!.durationMs, position?.elapsedMs ?? session.offsetMs ?? 0)
     session.paused = true; session.graphRevision = (session.graphRevision ?? 0) + 1
     session.graphAbort?.abort(); session.piano?.dispose(); session.readAbort?.abort()
-    this.update({ status: 'paused', activeIndex: position?.index ?? this.snapshot.activeIndex, stoppedPosition: position, livePosition: position })
+    this.update({ status: 'paused', activeIndex: position?.index ?? this.snapshot.activeIndex, stoppedPosition: session.permissions?.position === false ? null : position, livePosition: position })
   }
+  pauseGraph = () => this.pauseAtCurrent('user')
   resumeGraph = () => {
-    if (this.session?.paused) void this.renderGraph(this.session)
+    if (this.session?.paused) { this.emit('graph-resume',{elapsedMs:this.session.offsetMs}); void this.renderGraph(this.session) }
   }
   seekTo = (offsetMs: number) => {
     const session = this.session
-    if (!session?.graphStarted || !Number.isFinite(offsetMs)) return
+    if (!session?.graphStarted || session.permissions?.seek === false || !Number.isFinite(offsetMs)) return
     const paused = session.paused
+    this.emit('seek',{elapsedMs:Math.max(0,Math.min(session.s!.durationMs,offsetMs))})
     session.fullRun = false; session.positionAvailable = true; session.settle?.('cancelled')
     session.offsetMs = Math.max(0, Math.min(session.s!.durationMs, offsetMs))
     session.graphRevision = (session.graphRevision ?? 0) + 1
     session.graphAbort?.abort(); session.piano?.dispose(); session.readAbort?.abort()
     const position = this.position(session, session.offsetMs)
-    this.update({ needsFullReplay: true, stoppedPosition: position, livePosition: position, activeIndex: position?.index ?? -1 })
+    this.update({ needsFullReplay: true, stoppedPosition: session.permissions?.position === false ? null : position, livePosition: position, activeIndex: position?.index ?? -1 })
     if (!paused) void this.renderGraph(session)
   }
   move = (deltaMs: number) => this.seekTo((this.getPosition()?.elapsedMs ?? this.session?.offsetMs ?? 0) + deltaMs)
-  replaySegment = () => this.seekTo(Math.floor((this.getPosition()?.elapsedMs ?? this.session?.offsetMs ?? 0) / 1000) * 1000)
+  replaySegment = () => { if(this.session?.permissions?.seek === false)return;this.emit('segment-replay');this.seekTo(Math.floor((this.getPosition()?.elapsedMs ?? this.session?.offsetMs ?? 0) / 1000) * 1000) }
   setSpeed = (speed: number) => {
     if (![0.5, 0.75, 1, 1.25, 1.5].includes(speed)) return
     const session = this.session
+    if(session?.permissions && !session.permissions.speeds.includes(speed))return
+    this.emit('speed-change',{speed})
     if (session?.graphStarted && ['playing', 'paused'].includes(this.snapshot.status)) {
       const paused = session.paused
-      this.pauseGraph(); session.speed = speed
+      this.pauseAtCurrent('speed-change'); session.speed = speed
       this.update({ speed })
-      if (!paused) this.resumeGraph()
+      if (!paused) void this.renderGraph(session)
     } else { if (session) session.speed = speed; this.update({ speed }) }
   }
   announcePosition = (graph: Graph) => {
     const session = this.session, position = this.getPosition()
-    if (!session?.graphStarted || !position || position.graphId !== graph.id) return
-    this.pauseGraph()
+    if (!session?.graphStarted || session.permissions?.position === false || !position || position.graphId !== graph.id) return
+    this.emit('position-request',{elapsedMs:position.elapsedMs})
+    this.pauseAtCurrent('position-request')
     session.readAbort?.abort(); session.readAbort = new AbortController()
     void speak(describeStop(graph, position), AbortSignal.any([session.abort.signal, session.readAbort.signal])).catch(() => this.fail(session))
   }
 
-  previousSection = () => this.session?.narration?.previous()
-  nextSection = () => this.session?.narration?.next()
-  replaySection = () => this.session?.narration?.replay()
-  pauseNarration = () => this.session?.narration?.pause()
-  resumeNarration = () => this.session?.narration?.resume()
-  skipIntroduction = () => this.session?.narration?.skip()
+  previousSection = () => {this.emit('narration-previous');this.session?.narration?.previous()}
+  nextSection = () => {this.emit('narration-next');this.session?.narration?.next()}
+  replaySection = () => {this.emit('narration-replay');this.session?.narration?.replay()}
+  pauseNarration = () => {if(this.session?.permissions?.pause===false)return;this.emit('narration-pause');this.session?.narration?.pause()}
+  resumeNarration = () => {this.emit('narration-resume');this.session?.narration?.resume()}
+  skipIntroduction = () => {if(this.session?.permissions?.skipIntroduction===false)return;this.emit('skip-introduction');this.session?.narration?.skip()}
   /** Stop-position speech participates in the same replacement/unmount lifecycle. */
   announce = (text: string) => {
     const stoppedPosition = this.snapshot.stoppedPosition

@@ -60,3 +60,26 @@ it('keeps continuous mode unavailable for scored Test graph data',async()=>{
  const p=new PlaybackController(),r=p.play(s,undefined,{mode:'continuous',graph:{...GRAPHS[0],stage:'test'}})
  expect((await r.finished).kind).toBe('failed');expect(deps.create).not.toHaveBeenCalled()
 })
+
+describe('controlled protocol actions and event outcomes',()=>{
+ it('enforces restrictions at the controller, not only disabled buttons',async()=>{
+  const audio=piano();deps.create.mockResolvedValue(audio)
+  const p=new PlaybackController(),events:{type:string}[]=[];p.observe(e=>events.push(e))
+  const r=p.play(s,undefined,{permissions:{pause:true,seek:false,position:false,skipIntroduction:false,speeds:[1]}})
+  await r.scheduled
+  audio.getPosition.mockReturnValue({graphId:s.graphId,index:2,x:0.5,value:1.5,elapsedMs:1000})
+  p.seekTo(6000);p.setSpeed(1.5);p.announcePosition(GRAPHS[0]);p.skipIntroduction()
+  expect(p.getSnapshot().needsFullReplay).toBeUndefined();expect(p.getSnapshot().speed).toBe(1)
+  p.pauseGraph();expect(p.getSnapshot().stoppedPosition).toBeNull()
+  p.stop();expect(p.getSnapshot().stoppedPosition).toBeNull();expect((await r.finished).kind).toBe('cancelled')
+  expect(events.some(e=>e.type==='seek')).toBe(false);expect(events.some(e=>e.type==='skip-introduction')).toBe(false)
+ })
+ it('emits one terminal completion and isolates observer failures',async()=>{
+  const audio=piano();deps.create.mockResolvedValue(audio)
+  const p=new PlaybackController(),events:{type:string}[]=[]
+  p.observe(()=>{throw new Error('observer failure')});p.observe(e=>events.push(e))
+  const r=p.play(s);await r.scheduled;audio.resolve();await r.finished;p.stop()
+  expect(events.filter(e=>e.type==='playback-completed')).toHaveLength(1)
+  expect(events.filter(e=>e.type==='playback-cancelled')).toHaveLength(0)
+ })
+})

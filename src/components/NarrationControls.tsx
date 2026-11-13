@@ -1,9 +1,10 @@
 import { useControlFocus } from '../accessibility/useControlFocus.ts'
 import type { PreambleItem } from '../types.ts'
 import { narrationSections } from '../audio/narration.ts'
+import type { PlaybackPermissions } from '../audio/player.ts'
 import type { Player } from '../audio/usePlayer.ts'
 
-export function NarrationControls({ player, preamble }: { player: Player; preamble: PreambleItem[] }) {
+export function NarrationControls({ player, preamble, permissions }: { player: Player; preamble: PreambleItem[]; permissions?: PlaybackPermissions }) {
   const state = player.narration
   const sections = narrationSections(preamble)
   const active = player.status === 'speaking' && state && state.index < sections.length
@@ -16,8 +17,8 @@ export function NarrationControls({ player, preamble }: { player: Player; preamb
       <button type="button" disabled={state.index === 0} onClick={player.previousSection}>Previous Section</button>
       <button type="button" disabled={state.index === state.sections.length - 1} onClick={player.nextSection}>Next Section</button>
       <button type="button" onClick={player.replaySection}>Replay Current Section</button>
-      <button type="button" onClick={state.paused ? player.resumeNarration : player.pauseNarration}>{state.paused ? 'Resume narration' : 'Pause narration'}</button>
-      <button type="button" onClick={player.skipIntroduction}>Skip Introduction</button>
+      <button type="button" disabled={permissions?.pause === false} onClick={state.paused ? player.resumeNarration : player.pauseNarration}>{state.paused ? 'Resume narration' : 'Pause narration'}</button>
+      <button type="button" disabled={permissions?.skipIntroduction === false} onClick={player.skipIntroduction}>Skip Introduction</button>
     </div>
     </>}
     <details><summary>Introduction transcript</summary>
