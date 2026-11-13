@@ -99,11 +99,12 @@ export interface Note {
 /**
  * One element of descriptive narration: either a labeled sentence or a reference note.
  */
-export type PreambleItem = { say: string } | { note: number; name: string; ms: number }
+export type PreambleItem = { say: string } | { note: number; name: string; ms: number; frequencyHz?: number }
 
 /** The preamble anchors (trough / peak / start / step) plus the note sequence. */
 export interface Sonification {
   graphId: string
+  pitchRange?: { low: number; high: number }
   durationMs: number
   trough: Anchor
   peak: Anchor
@@ -153,6 +154,7 @@ export type LessonPhase =
 
 /** The latest scheduled sample reached on the audio clock, not a rounded observation. */
 export interface PlaybackPosition {
+  mode?: 'piano' | 'continuous'
   graphId: string
   elapsedMs: number
   index: number

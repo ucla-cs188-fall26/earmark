@@ -20,7 +20,7 @@ export function ProtocolIntro({ player, onStart, mode = 'tutorial' }: { player: 
     <p>Higher notes mean higher values. The guide explains the values, pitch reference, and time represented by each horizontal-axis unit.</p>
     <p>Press Stop to hear your position and value. A position is available only after graph audio begins. Listen to a complete graph before answering; stopping early keeps answers unavailable. You may replay as often as you like.</p>
     <ProtocolSummary graph={sample} sonification={sonification} headingLevel={3} />
-    {mode === 'tutorial' && <><LineChart series={sample} activePosition={chartPosition(sonification, player.activeIndex, player.stoppedPosition)} /><DataTable graph={sample} /></>}
+    {mode === 'tutorial' && <><LineChart series={sample} activePosition={chartPosition(sonification, player.activeIndex, player.stoppedPosition, player.livePosition)} /><DataTable graph={sample} /></>}
     <GraphControls player={player} sonification={sonification} graph={sample} onReplay={() => { void player.play(sonification, preamble) }} />
       <NarrationControls player={player} preamble={preamble} />
     <StoppedPosition graph={sample} position={player.stoppedPosition} />

@@ -55,3 +55,8 @@ describe('graph transport and full listening',()=>{
   deps.create.mockResolvedValue(piano());const p=new PlaybackController(),r=p.play(s);await r.scheduled;p.pauseGraph();expect(p.getPosition()).toBeNull();expect(p.stop()).toBeNull()
  })
 })
+
+it('keeps continuous mode unavailable for scored Test graph data',async()=>{
+ const p=new PlaybackController(),r=p.play(s,undefined,{mode:'continuous',graph:{...GRAPHS[0],stage:'test'}})
+ expect((await r.finished).kind).toBe('failed');expect(deps.create).not.toHaveBeenCalled()
+})

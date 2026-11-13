@@ -56,7 +56,8 @@ export function positionAtTime(s: Sonification, elapsedMs: number): PlaybackPosi
 }
 
 /** Convert the shared sampled coordinate to chart geometry without rounding. */
-export function chartPosition(s: Sonification, activeIndex: number, stopped: PlaybackPosition | null): Point | null {
+export function chartPosition(s: Sonification, activeIndex: number, stopped: PlaybackPosition | null, live?: PlaybackPosition | null): Point | null {
+  if (live?.graphId === s.graphId && activeIndex >= 0) return { x: live.x, y: live.value }
   const active = s.notes[activeIndex]
   if (active) return { x: active.x, y: active.value }
   return stopped?.graphId === s.graphId ? { x: stopped.x, y: stopped.value } : null

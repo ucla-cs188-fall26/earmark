@@ -1,10 +1,14 @@
 import type { PlaybackPosition, PreambleItem, Sonification } from '../types.ts'
 import { createPianoSession, createReferenceSession, type PianoSession } from './piano.ts'
 import { NarrationTransport, narrationSections, type NarrationState } from './narration.ts'
+import { createContinuousSession, continuousPosition } from './continuous.ts'
 import { positionAtTime } from '../graph/coordinates.ts'
 import { describeStop } from '../graph/descriptions.ts'
 import type { Graph } from '../types.ts'
 import { speak } from './speech.ts'
+
+export type SonificationMode = 'piano' | 'continuous'
+export interface PlaybackOptions { mode?: SonificationMode; graph?: Graph }
 
 export interface PlaybackOutcome {
   kind: 'completed' | 'cancelled' | 'failed'
@@ -23,6 +27,7 @@ export interface PlayerSnapshot {
   status: PlayerStatus
   activeIndex: number
   error: string | null
+  livePosition?: PlaybackPosition | null
   speed?: number
   needsFullReplay?: boolean
   narration?: NarrationState
@@ -34,6 +39,8 @@ interface Session {
   piano?: PianoSession
   narration?: NarrationTransport
   s?: Sonification
+  graph?: Graph
+  mode?: SonificationMode
   offsetMs?: number
   speed?: number
   graphRevision?: number
@@ -75,9 +82,15 @@ export class PlaybackController {
     previous?.abort.abort()
     previous?.piano?.dispose()
   }
+  private position(session: Session, elapsedMs: number) {
+    return session.mode === 'continuous' && session.graph ? continuousPosition(session.graph, session.s!, elapsedMs) : positionAtTime(session.s!, elapsedMs)
+  }
+  private renderer(session: Session, signal: AbortSignal, reference = false) {
+    return session.mode === 'continuous' ? createContinuousSession(signal, session.graph!) : reference ? createReferenceSession(signal) : createPianoSession(signal)
+  }
   getPosition = () => {
     const session = this.session
-    if (session?.paused && session.s) return session.positionAvailable ? positionAtTime(session.s, session.offsetMs ?? 0) : null
+    if (session?.paused && session.s) return session.positionAvailable ? this.position(session, session.offsetMs ?? 0) : null
     const position = session?.piano?.getPosition() ?? null
     if (session && position) session.positionAvailable = true
     return position
@@ -86,12 +99,12 @@ export class PlaybackController {
     // Capture from the audio clock BEFORE abort disconnects/disposes the sources.
     const position = this.getPosition()
     this.cancel()
-    this.update({ status: 'idle', activeIndex: -1, error: null, narration: undefined, stoppedPosition: position ?? this.snapshot.stoppedPosition })
+    this.update({ status: 'idle', activeIndex: -1, error: null, narration: undefined, livePosition: undefined, stoppedPosition: position ?? this.snapshot.stoppedPosition })
     return position
   }
   reset = () => {
     this.stop()
-    this.update({ stoppedPosition: null, needsFullReplay: undefined })
+    this.update({ stoppedPosition: null, needsFullReplay: undefined, livePosition: undefined })
   }
   private begin(): Session {
     this.reset()
@@ -102,10 +115,10 @@ export class PlaybackController {
   private fail(session: Session) {
     if (!this.current(session)) return
     this.cancel('failed')
-    this.update({ status: 'error', activeIndex: -1, error: 'Unable to load or play piano audio. Check your connection and press Play to retry.' })
+    this.update({ status: 'error', activeIndex: -1, error: 'Unable to load or play audio. Check your connection and press Play to retry.' })
   }
   /** Each request settles exactly once, even if an underlying load never resolves. */
-  play = (s: Sonification, preamble?: PreambleItem[]): PlaybackRequest => {
+  play = (s: Sonification, preamble?: PreambleItem[], options: PlaybackOptions = {}): PlaybackRequest => {
     const session = this.begin()
     const identity = { sessionId: session.id, graphId: s.graphId }
     let scheduled!: (value: Awaited<PlaybackRequest['scheduled']>) => void
@@ -119,6 +132,7 @@ export class PlaybackController {
       if (kind !== 'completed') scheduled({ ...identity, kind })
       finished({ ...identity, kind })
     }
+    session.mode = options.mode ?? 'piano'; session.graph = options.graph
     session.s = s; session.speed = this.snapshot.speed ?? 1; session.offsetMs = 0; session.fullRun = true
     session.scheduled = () => scheduled({ ...identity, kind: 'scheduled' })
     this.update({ status: 'loading' })
@@ -128,8 +142,9 @@ export class PlaybackController {
   private async run(session: Session, preamble: PreambleItem[] | undefined, scheduled: () => void) {
     const signal = session.abort.signal
     try {
+      if (session.mode === 'continuous' && (!session.graph || session.graph.stage === 'test')) throw new Error('Continuous mode is practice only')
       session.graphAbort = new AbortController()
-      session.piano = await createPianoSession(AbortSignal.any([signal, session.graphAbort.signal]))
+      session.piano = await this.renderer(session, AbortSignal.any([signal, session.graphAbort.signal]))
       if (!this.current(session)) {
         session.piano.dispose()
         return
@@ -137,12 +152,12 @@ export class PlaybackController {
       if (preamble) {
         this.update({ status: 'speaking' })
         session.narration = new NarrationTransport(narrationSections(preamble), signal, async (items, childSignal) => {
-          const reference = await createReferenceSession(childSignal)
+          const reference = await this.renderer(session, childSignal, true)
           try {
             for (const item of items) {
               childSignal.throwIfAborted()
               if ('say' in item) await speak(item.say, childSignal)
-              else await reference.playNote(item.name, item.ms)
+              else await reference.playNote(item.name, item.ms, item.frequencyHz)
             }
           } finally { reference.dispose() }
         }, (narration) => { if (this.current(session)) this.update({ narration }) })
@@ -167,11 +182,11 @@ export class PlaybackController {
     }
     const active = () => this.current(session) && session.graphRevision === revision && !session.paused
     try {
-      const piano = existing ?? await createPianoSession(AbortSignal.any([session.abort.signal, session.graphAbort!.signal]))
+      const piano = existing ?? await this.renderer(session, AbortSignal.any([session.abort.signal, session.graphAbort!.signal]))
       if (!active()) { piano.dispose(); return }
       session.piano = piano
-      const done = piano.playGraph(session.s!, (activeIndex) => {
-        if (active()) this.update({ activeIndex })
+      const done = piano.playGraph(session.s!, (activeIndex, livePosition) => {
+        if (active()) this.update({ activeIndex, livePosition })
       }, { offsetMs: session.offsetMs, speed: session.speed })
       this.update({ status: 'playing' })
       session.scheduled?.()
@@ -191,7 +206,7 @@ export class PlaybackController {
     session.offsetMs = Math.min(session.s!.durationMs, position?.elapsedMs ?? session.offsetMs ?? 0)
     session.paused = true; session.graphRevision = (session.graphRevision ?? 0) + 1
     session.graphAbort?.abort(); session.piano?.dispose(); session.readAbort?.abort()
-    this.update({ status: 'paused', activeIndex: position?.index ?? this.snapshot.activeIndex, stoppedPosition: position })
+    this.update({ status: 'paused', activeIndex: position?.index ?? this.snapshot.activeIndex, stoppedPosition: position, livePosition: position })
   }
   resumeGraph = () => {
     if (this.session?.paused) void this.renderGraph(this.session)
@@ -204,8 +219,8 @@ export class PlaybackController {
     session.offsetMs = Math.max(0, Math.min(session.s!.durationMs, offsetMs))
     session.graphRevision = (session.graphRevision ?? 0) + 1
     session.graphAbort?.abort(); session.piano?.dispose(); session.readAbort?.abort()
-    const position = positionAtTime(session.s!, session.offsetMs)
-    this.update({ needsFullReplay: true, stoppedPosition: position, activeIndex: position?.index ?? -1 })
+    const position = this.position(session, session.offsetMs)
+    this.update({ needsFullReplay: true, stoppedPosition: position, livePosition: position, activeIndex: position?.index ?? -1 })
     if (!paused) void this.renderGraph(session)
   }
   move = (deltaMs: number) => this.seekTo((this.getPosition()?.elapsedMs ?? this.session?.offsetMs ?? 0) + deltaMs)
