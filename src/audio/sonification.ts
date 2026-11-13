@@ -126,6 +126,7 @@ export function sonify(graph: Graph, overrides: Partial<ProtocolOptions> = {}): 
 
   return {
     graphId: graph.id,
+    pitchRange: { low: opts.lowestMidi, high: opts.highestMidi },
     durationMs: opts.durationMs,
     trough: anchor(troughValue),
     peak: anchor(peakValue),
@@ -155,5 +156,5 @@ export function buildPreamble(s: Sonification, graph: Graph): PreambleItem[] {
 }
 
 export function preambleText(items: PreambleItem[]): string {
-  return items.map((i) => ('say' in i ? i.say : `[${i.name}]`)).join(' ')
+  return items.map((i) => ('say' in i ? i.say : i.frequencyHz ? '[Reference tone]' : `[${i.name}]`)).join(' ')
 }

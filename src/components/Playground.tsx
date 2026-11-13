@@ -1,3 +1,4 @@
+import { continuousPreamble } from '../audio/continuous.ts'
 import { GraphControls } from './GraphControls.tsx'
 import { NarrationControls } from './NarrationControls.tsx'
 /**
@@ -18,12 +19,13 @@ import { buildPreamble, preambleText, sonify } from '../audio/sonification.ts'
 
 export function Playground() {
   const [exampleId, setExampleId] = useState(EXAMPLES[0].id)
+  const [mode, setMode] = useState<'piano' | 'continuous'>('piano')
   const [speakPreamble, setSpeakPreamble] = useState(true)
   const player = usePlayer()
 
   const series = EXAMPLES.find((e) => e.id === exampleId) ?? EXAMPLES[0]
   const sonification = useMemo(() => sonify(series), [series])
-  const preamble = buildPreamble(sonification, series)
+  const preamble = mode === 'continuous' ? continuousPreamble(sonification, series) : buildPreamble(sonification, series)
 
   return (
     <>
@@ -32,6 +34,12 @@ export function Playground() {
       </p>
 
       <section className="picker">
+        <label>Sonification mode{' '}
+          <select value={mode} onChange={(e) => { player.reset(); setMode(e.target.value as 'piano' | 'continuous') }}>
+            <option value="piano">Piano (default)</option><option value="continuous">Continuous tone (practice comparison)</option>
+          </select>
+        </label>
+        <p>Compare modes on the same example. This selector does not change scored Test playback.</p>
         <label>
           Example graph{' '}
           <select
@@ -52,8 +60,8 @@ export function Playground() {
 
       <section className="stage">
         <ProtocolSummary graph={series} sonification={sonification} />
-        <LineChart series={series} activePosition={chartPosition(sonification, player.activeIndex, player.stoppedPosition)} />
-        <GraphControls player={player} sonification={sonification} graph={series} onReplay={() => { void player.play(sonification, speakPreamble ? preamble : undefined) }} />
+        <LineChart series={series} activePosition={chartPosition(sonification, player.activeIndex, player.stoppedPosition, player.livePosition)} />
+        <GraphControls player={player} sonification={sonification} graph={series} onReplay={() => { void player.play(sonification, speakPreamble ? preamble : undefined, { mode, graph: series }) }} />
       <NarrationControls player={player} preamble={preamble} />
         <StoppedPosition graph={series} position={player.stoppedPosition} />
         <DataTable graph={series} />
@@ -62,7 +70,7 @@ export function Playground() {
           status={player.status}
           speakPreamble={speakPreamble}
           onToggleSpeak={setSpeakPreamble}
-          onPlay={() => void player.play(sonification, speakPreamble ? preamble : undefined)}
+          onPlay={() => void player.play(sonification, speakPreamble ? preamble : undefined, { mode, graph: series })}
           onStop={() => player.stopAndAnnounce(series)}
         />
       </section>

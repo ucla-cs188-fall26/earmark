@@ -26,8 +26,8 @@ async function loadSamples(signal: AbortSignal): Promise<Map<number, AudioBuffer
 
 export interface GraphPlaybackOptions { offsetMs?: number; speed?: number }
 export interface PianoSession {
-  playNote: (name: string, ms: number) => Promise<void>
-  playGraph: (s: Sonification, onNote: (index: number) => void, options?: GraphPlaybackOptions) => Promise<void>
+  playNote: (name: string, ms: number, frequencyHz?: number) => Promise<void>
+  playGraph: (s: Sonification, onNote: (index: number, position?: PlaybackPosition) => void, options?: GraphPlaybackOptions) => Promise<void>
   dispose: () => void
   getPosition: () => PlaybackPosition | null
 }

@@ -79,5 +79,5 @@ export function describeObservationChange(g: Graph, from: number, to: number): s
 export function describeStop(g: Graph, p: PlaybackPosition): string {
   const t = observationAt(g, p.x)
   const estimate = interpolation(g) === 'linear' && Math.abs(t - Math.round(t)) > 1e-8
-  return `Stopped at the latest sampled position. ${g.xLabel}: ${formatX(g, p.x)}. ${g.yLabel}: ${formatValue(g, p.value)}.${estimate ? ' This is an estimate between recorded observations.' : ''}`
+  return `${p.mode === 'continuous' ? 'Graph position.' : 'Stopped at the latest sampled position.'} ${g.xLabel}: ${formatX(g, p.x)}. ${g.yLabel}: ${formatValue(g, p.value)}.${estimate ? ' This is an estimate between recorded observations.' : ''}`
 }

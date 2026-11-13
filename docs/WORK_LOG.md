@@ -600,3 +600,33 @@ cover semantic progress, feedback withholding/text and real stylesheet contrast
 in both themes. Browser tests are automated interactions; VoiceOver/NVDA/JAWS were
 NOT manually tested. This targets WCAG 2.2 AA but does not certify whole-app
 conformance. Existing cancellation and eligibility tests remain passing.
+
+## Roadmap — Continuous sonification comparison
+
+Branch `feat/continuous-sonification`, stacked on accessible transport. Playground
+now offers piano (unchanged default) and continuous sine tone. Scored activity has
+no mode selector; the controller rejects continuous playback of Test-bank graphs.
+Both modes share the generated timeline, calibrated Y-per-semitone scale, pitch
+bounds, six-second default and source-coordinate policy. Continuous pitch removes
+piano quantization: linear Y follows exponential frequency ramps (linear MIDI),
+while declared step curves keep their genuine discontinuities. References use
+exact unrounded values on the same oscillator calibration, not rounded piano
+anchors. Added pitch-bound metadata does not change piano notes or graph data.
+
+The oscillator owns every voice/envelope/timer. Pause/resume, seek, current position
+speech, speed changes and Stop reuse the tested transport. Live coordinates and
+playheads follow the continuous evaluator; there are no high-frequency live-region
+announcements. Output has a short onset envelope and the same one-second release
+condition. Tone amplitude 0.12 is a conservative engineering starting point, NOT
+perceptually loudness-matched to every piano sample. Prof. Jun must review timbre,
+loudness, range and reference-preview timing before comparative participant work.
+No superiority claim or scored-mode change is made.
+
+All 130 tests, lint, typecheck, build and diff checks passed. Regressions cover
+unrounded mapping/references, step policy, speed-aware coordinates, cancellation,
+clock+natural-end completion and scored-mode rejection. In a fresh browser, piano
+was initially selected; continuous output RMS was 0.08536 before pause, 0 after
+pause, 0.08435 after seek/resume, and 0 at 150 ms after Stop. Persistent coordinates
+matched the continuous curve. After Test route rendering settled, there were zero
+mode selectors. Waveforms used a 2048-sample analyser at the app's Tone destination;
+this is single-engine signal evidence, not physical latency or manual AT testing.

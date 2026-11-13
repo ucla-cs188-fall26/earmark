@@ -92,7 +92,7 @@ export function Lesson({ mode = 'tutorial' }: { mode?: 'tutorial' | 'test' }) {
 
   if (!question || !graph || !sonification) return null
   const busy = player.status !== 'idle' && player.status !== 'error'
-  const activePosition = chartPosition(sonification, player.activeIndex, player.stoppedPosition)
+  const activePosition = chartPosition(sonification, player.activeIndex, player.stoppedPosition, player.livePosition)
 
   return (
     <section className="lesson">

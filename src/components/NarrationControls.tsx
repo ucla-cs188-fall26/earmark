@@ -23,7 +23,7 @@ export function NarrationControls({ player, preamble }: { player: Player; preamb
     <details><summary>Introduction transcript</summary>
       {sections.map((s, index) => <section key={index} aria-current={active && index === state.index ? 'step' : undefined}>
         <h3>{s.title}{active && index === state.index ? ' (current section)' : ''}</h3>
-        <p>{s.items.map((item) => 'say' in item ? item.say : `[Reference note: ${item.name}]`).join(' ')}</p>
+        <p>{s.items.map((item) => 'say' in item ? item.say : item.frequencyHz ? '[Reference tone]' : `[Reference note: ${item.name}]`).join(' ')}</p>
       </section>)}
     </details>
   </section>

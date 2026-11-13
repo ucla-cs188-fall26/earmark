@@ -7,7 +7,7 @@ import type { Graph, Sonification } from '../types.ts'
 export function GraphControls({ player, graph, sonification, onReplay, eligible = false, requiresFullListening = false }: { player: Player; graph: Graph; sonification: Sonification; onReplay: () => void; eligible?: boolean; requiresFullListening?: boolean }) {
   const active = player.status === 'playing' || player.status === 'paused'
   const focus = useControlFocus(active)
-  const note = sonification.notes[player.activeIndex]
+  const note = player.livePosition ?? sonification.notes[player.activeIndex]
   const start = axisPosition(graph, graph.points[0].x), end = axisPosition(graph, graph.points.at(-1)!.x)
   const progress = note ? (axisPosition(graph, note.x) - start) / (end - start || 1) * 100 : 0
   return <section aria-label="Graph playback navigation" {...focus}>
