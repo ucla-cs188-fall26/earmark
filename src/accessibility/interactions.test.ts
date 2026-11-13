@@ -34,3 +34,8 @@ describe('accessible interactions',()=>{
   }
  })
 })
+
+it('withholds deferred correctness feedback even after an answer',()=>{
+ const html=renderToStaticMarkup(createElement(QuestionCard,{question:QUESTIONS[0],chosenIndex:1,showFeedback:false,onAnswer:vi.fn()}))
+ expect(html).not.toContain('Correct answer:');expect(html).not.toContain('choice--correct');expect(html).not.toContain('choice--wrong')
+})

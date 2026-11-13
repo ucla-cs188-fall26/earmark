@@ -179,3 +179,21 @@ amounts between observations without stating which changes occur in a scored gra
 - [ ] Side-by-side comparison with Apple Audio Graph style (continuous pitch, no preamble)
 - [ ] Record the clip to a WAV for sharing outside the browser
 - [ ] Log study responses (needs a tiny backend or a form service)
+
+## Roadmap controls and local study records
+
+Narration now has headed sections, previous/next/replay, pause/resume (restart the
+current section), and skip. Graph transport supports pause/resume, one-second
+navigation, segment replay, speed and position speech. Guide times remain 1×.
+Seeking invalidates that run's full-listening credit; a fresh full replay is
+required, while prior eligibility survives. Piano remains default. Playground's
+continuous comparison uses the same calibration/timeline; scored playback is piano.
+
+Test presets are explicitly **unapproved demonstrations requiring Prof. Jun review**.
+They are selected before starting and fully captured with protocol versions in
+local records. Full graph data and feedback respect the selected reveal policy.
+No interaction records leave the tab unless the user downloads JSON. Export before
+restarting, changing activity or closing the tab; records are not persisted.
+See [research protocol and export schema](docs/RESEARCH_PROTOCOL.md) before analysis
+or participant work. These features do not establish research approval or full
+WCAG conformance. Continuous loudness and manual AT validation remain open.

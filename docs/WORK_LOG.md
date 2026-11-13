@@ -630,3 +630,43 @@ pause, 0.08435 after seek/resume, and 0 at 150 ms after Stop. Persistent coordin
 matched the continuous curve. After Test route rendering settled, there were zero
 mode selectors. Waveforms used a 2048-sample analyser at the app's Tone destination;
 this is single-engine signal evidence, not physical latency or manual AT testing.
+
+## Roadmap — Research and Test-mode readiness
+
+Branch `feat/research-readiness`, stacked on continuous comparison. Added visibly
+unapproved, versioned demonstration presets selected before Start and captured in
+exports. Default behavior remains assisted piano with per-answer feedback. An
+explicit alternative restricts speed/seek/position/direct skip and defers feedback
+and graph data until session end. Controller-level restrictions prevent bypass via
+other controls; masked paused/stopped Y text cannot defeat lookup restrictions.
+Section navigation remains available/logged and is NOT claimed as complete intro
+exposure. Tutorial, onboarding practice, scored activity and Playground are labeled
+separately; banks/data are unchanged and practice/scored identifiers are disjoint.
+
+Added bounded anonymous in-memory event journals with exact question order, mode,
+protocol/version/condition snapshots, relative times, root session IDs, playback/
+narration navigation, replay, pause, seek, skip, completion and answer events. Speech
+results now distinguish normal end, errors, timeout and watchdog inference without
+changing the existing fallback progression. Observers cannot break audio ownership,
+and unmount cancellation is recorded before observer removal. Exports flag overflow
+and incomplete sessions. No PII fields, microphone, storage, analytics, database or
+interaction-data network transmission was added. JSON download is explicit; data
+are lost on restart/navigation/close unless exported, stated in the UI and schema.
+
+All 138 tests, lint, types, build and diff checks passed. Build has a non-failing
+~509 kB chunk-size warning; no check failure was hidden. Tests cover preset
+validation, condition separation, immutable captured settings, event order/replay,
+truncation, disjoint banks, restrictions, single terminal outcomes, observer
+isolation and deferred-answer non-disclosure. Browser fixed-preset checks verified
+one speed option, disabled direct skip/seek/position, hidden paused/stopped Y,
+withheld charts/data/correctness after answering, natural-completion eligibility,
+and reset on Next. Deferred-answer focus moved to the explanatory text and Tab
+reached Next question. A real JSON download was parsed from its Blob and contained
+scored activity, the exact preset, ten question IDs, piano mode and the expected
+navigation/completion/answer events, with no answer key and no truncation. Speech
+was mocked for repeatability; real piano audio was used. One attempt to read the
+download with a VM Node import was unsupported; Blob parsing verified the same
+export bytes instead. No manual VoiceOver/NVDA test is claimed.
+
+`docs/RESEARCH_PROTOCOL.md` specifies the schema, privacy/loss limits, event semantics
+and Prof. Jun decisions. Neither preset is presented as an approved experiment.

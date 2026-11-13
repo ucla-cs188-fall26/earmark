@@ -14,10 +14,11 @@ interface Props {
   /** Disabled until one graph playback has completed naturally. */
   disabled?: boolean
   instructionsId?: string
+  showFeedback?: boolean
   onAnswer: (index: number) => void
 }
 
-export function QuestionCard({ question, chosenIndex, disabled = false, instructionsId, onAnswer }: Props) {
+export function QuestionCard({ question, chosenIndex, disabled = false, instructionsId, showFeedback = true, onAnswer }: Props) {
   const answered = chosenIndex !== null
   return (
     <fieldset className="question" disabled={disabled || answered} aria-describedby={instructionsId}>
@@ -25,7 +26,7 @@ export function QuestionCard({ question, chosenIndex, disabled = false, instruct
       <ol className="choices">
         {question.choices.map((choice, i) => {
           let state = ''
-          if (answered) {
+          if (answered && showFeedback) {
             if (i === question.correctIndex) state = ' choice--correct'
             else if (i === chosenIndex) state = ' choice--wrong'
           }
@@ -38,7 +39,7 @@ export function QuestionCard({ question, chosenIndex, disabled = false, instruct
           )
         })}
       </ol>
-      {answered && (
+      {answered && showFeedback && (
         <p className="feedback" role="status">
           {chosenIndex === question.correctIndex ? 'Correct.' : 'Not quite.'}{' '}
           Your answer: {question.choices[chosenIndex!]}. Correct answer: {question.choices[question.correctIndex]}. {question.explanation ?? ''}

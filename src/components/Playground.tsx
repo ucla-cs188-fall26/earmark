@@ -1,3 +1,5 @@
+import { ResearchRecord } from '../research/record.ts'
+import { ResearchPanel } from './ResearchPanel.tsx'
 import { continuousPreamble } from '../audio/continuous.ts'
 import { GraphControls } from './GraphControls.tsx'
 import { NarrationControls } from './NarrationControls.tsx'
@@ -21,7 +23,8 @@ export function Playground() {
   const [exampleId, setExampleId] = useState(EXAMPLES[0].id)
   const [mode, setMode] = useState<'piano' | 'continuous'>('piano')
   const [speakPreamble, setSpeakPreamble] = useState(true)
-  const player = usePlayer()
+  const [record] = useState(()=>new ResearchRecord('practice'))
+  const player = usePlayer(record.recordAudio)
 
   const series = EXAMPLES.find((e) => e.id === exampleId) ?? EXAMPLES[0]
   const sonification = useMemo(() => sonify(series), [series])
@@ -30,12 +33,12 @@ export function Playground() {
   return (
     <>
       <p className="lede">
-        Tutorial graphs only: hear each example as piano notes, pick a graph, press play, and follow the preamble.
+        Unscored practice — tutorial graphs only: hear each example as piano notes, pick a graph, press play, and follow the preamble.
       </p>
 
       <section className="picker">
         <label>Sonification mode{' '}
-          <select value={mode} onChange={(e) => { player.reset(); setMode(e.target.value as 'piano' | 'continuous') }}>
+          <select value={mode} onChange={(e) => { player.reset(); setMode(e.target.value as 'piano' | 'continuous');record.record('mode-selected',{mode:e.target.value as 'piano'|'continuous'}) }}>
             <option value="piano">Piano (default)</option><option value="continuous">Continuous tone (practice comparison)</option>
           </select>
         </label>
@@ -86,6 +89,7 @@ export function Playground() {
           <NoteTable graph={series} sonification={sonification} activeIndex={player.activeIndex} />
         </div>
       </section>
+      <ResearchPanel record={record}/>
     </>
   )
 }
