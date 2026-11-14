@@ -1,3 +1,4 @@
+import { ObservationChange } from './ObservationChange.tsx'
 import type { Graph } from '../types.ts'
 import { formatValue, formatX } from '../graph/descriptions.ts'
 
@@ -12,5 +13,6 @@ export function DataTable({ graph }: { graph: Graph }) {
         <tbody>{graph.points.map((p) => <tr key={p.x}><th scope="row">{formatX(graph, p.x)}</th><td>{formatValue(graph, p.y)}</td></tr>)}</tbody>
       </table>
     </div>
+    <ObservationChange key={graph.id} graph={graph} />
   </details>
 }

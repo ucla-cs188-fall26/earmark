@@ -15,11 +15,11 @@ export function ProtocolIntro({ player, onStart, mode = 'tutorial' }: { player: 
   const busy = player.status !== 'idle' && player.status !== 'error'
   return <section className="intro">
     <h2>{mode === 'test' ? 'Prepare for the test' : 'How to listen'}</h2>
-    <p>Higher values produce higher piano notes. Before each graph, narration explains the axes, units, value range, pitch references and playback timeline. Lowest, highest and starting reference notes are explicitly labeled.</p>
-    <p>Press Stop to hear the latest sampled graph position. A position is available only after graph audio begins. Listen to a complete graph before answering; stopping early keeps answers unavailable. You may replay as often as you like.</p>
+    <p>Higher notes mean higher values. The guide explains the values, pitch reference, and time represented by each horizontal-axis unit.</p>
+    <p>Press Stop to hear your position and value. A position is available only after graph audio begins. Listen to a complete graph before answering; stopping early keeps answers unavailable. You may replay as often as you like.</p>
     <ProtocolSummary graph={sample} sonification={sonification} headingLevel={3} />
     {mode === 'tutorial' && <><LineChart series={sample} activePosition={chartPosition(sonification, player.activeIndex, player.stoppedPosition)} /><DataTable graph={sample} /></>}
-    <details><summary>Read the sample narration</summary><p>{preambleText(preamble)}</p></details>
+    <details><summary>Read the example narration</summary><p>{preambleText(preamble)}</p></details>
     <StoppedPosition graph={sample} position={player.stoppedPosition} />
     {player.error && <p role="alert">{player.error}</p>}
     <div className="controls">

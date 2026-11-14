@@ -1,4 +1,5 @@
 import type { Graph, PlaybackPosition, Sonification } from '../types.ts'
+import { generatedMapping } from './mapping.ts'
 import { axisKind, interpolation, observationAt } from './coordinates.ts'
 
 const number = new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 })
@@ -19,7 +20,13 @@ export function valueUnit(g: Graph) {
   if (g.unit === 'k') return { name: g.yLabel.toLowerCase(), scale: 1000, description: `thousands of ${g.yLabel.toLowerCase()}` }
   return units[g.unit ?? ''] ?? { name: g.unit ?? 'data units', scale: 1, description: g.unit ?? 'data units' }
 }
-export const formatValue = (g: Graph, raw: number) => `${formatNumber(raw * valueUnit(g).scale)} ${valueUnit(g).name}`
+export function formatValue(g: Graph, raw: number): string {
+  const unit = valueUnit(g), amount = raw * unit.scale
+  const name = Math.abs(amount) === 1
+    ? unit.name.replace(/\b(users|dollars|requests|visitors|degrees|units|points)\b/g, (word) => word.slice(0, -1))
+    : unit.name
+  return `${formatNumber(amount)} ${name}`
+}
 export function formatX(g: Graph, x: number): string {
   if (!g.xLabels) return `${formatNumber(x)}${g.xUnit ? ` ${g.xUnit}` : ''}`
   const t = observationAt(g, x), i = Math.floor(t), fraction = t - i
@@ -35,21 +42,40 @@ export function describeAxes(g: Graph): [string, string] {
     `The vertical axis represents ${g.yDescription ?? g.yLabel}, measured in ${valueUnit(g).description}.`,
   ]
 }
-/** Individual sentences also bound speech utterances below the watchdog cap. */
+/** A category unit is one observation step; numeric units retain their meaning. */
+function horizontalUnit(g: Graph): string {
+  const unit = axisKind(g) === 'categorical' ? g.xLabel : g.xUnit ?? g.xLabel
+  const singular: Record<string, string> = {
+    s: 'second', seconds: 'second', ms: 'millisecond', milliseconds: 'millisecond',
+    minutes: 'minute', hours: 'hour', days: 'day', weeks: 'week', months: 'month',
+    quarters: 'quarter', steps: 'step', 'sample-index units': 'sample-index unit',
+  }
+  return singular[unit.toLowerCase()] ?? unit.toLowerCase()
+}
+export const describePitchReference = (g: Graph, s: Sonification) =>
+  `Each semitone represents ${formatValue(g, s.unitsPerStep / s.stepSemitones)}.`
+
+/** Shared, brief user-facing guide. Sequence spacing describes X and time, not slope. */
 export function describePlaybackParts(g: Graph, s: Sonification): string[] {
-  const kind = axisKind(g) === 'categorical' ? 'Ordered categories receive equal time between observations.' : 'Equal numeric distances on the horizontal axis receive equal playback time.'
-  const curve = interpolation(g) === 'step' ? 'Values are held until the next observation; no intermediate values are invented.' : 'Values between observations are linear estimates, not additional measurements.'
-  const last = s.notes.at(-1)!
+  const mapping = generatedMapping(g, s)
+  if (!mapping) return ['There is only one observation, so there is no horizontal interval to describe.']
+  const display = (value: number) => value !== 0 && Math.abs(value) < 0.005 ? formatNumber(value) : brief.format(value)
+  const intervals = display(mapping.noteIntervalsPerUnit), seconds = display(mapping.secondsPerUnit)
+  const approximation = !mapping.uniform ? 'an average of ' : Number.isInteger(mapping.noteIntervalsPerUnit) ? '' : 'approximately '
   return [
-    `The graph plays over ${brief.format(s.durationMs / 1000)} seconds, progressing from ${formatX(g, g.points[0].x)} to ${formatX(g, g.points.at(-1)!.x)}.`,
-    kind, curve,
-    `The final position is reached at ${brief.format(last.startMs / 1000)} seconds and held until the sequence ends.`,
-    'The piano plays short sampled notes; Stop reports the latest sample reached.',
-    'Pitches are rounded to the nearest step; spoken values describe the underlying sample.',
-    'Release tails may continue briefly after the sequence.',
+    `One ${horizontalUnit(g)} on the horizontal axis corresponds to ${approximation}${intervals} note ${intervals === '1' ? 'interval' : 'intervals'} and approximately ${seconds} ${seconds === '1' ? 'second' : 'seconds'} of playback.`,
+    `The change in ${g.yLabel.toLowerCase()} can differ between successive observations; this timing does not imply a fixed change in value.`,
   ]
 }
 export const describeMapping = (g: Graph, s: Sonification) => describePlaybackParts(g, s).join(' ')
+
+/** Called only in the recorded-data view, where full values are already permitted. */
+export function describeObservationChange(g: Graph, from: number, to: number): string {
+  const delta = g.points[to].y - g.points[from].y
+  const change = delta === 0 ? `does not change (${formatValue(g, 0)})`
+    : `${delta > 0 ? 'increases' : 'decreases'} by ${formatValue(g, Math.abs(delta))}`
+  return `From ${formatX(g, g.points[from].x)} to ${formatX(g, g.points[to].x)}, ${g.yLabel.toLowerCase()} ${change}.`
+}
 export function describeStop(g: Graph, p: PlaybackPosition): string {
   const t = observationAt(g, p.x)
   const estimate = interpolation(g) === 'linear' && Math.abs(t - Math.round(t)) > 1e-8
