@@ -5,7 +5,9 @@ for graph sonification, with descriptive narration, explicit pitch references,
 training questions and an audio-only assessment flow. Comparative usability
 claims require study evidence.
 
-**Live site:** https://laziestcactus.github.io/earmark/ (deploys from `main`)
+**Live site:** [https://earmark-pi.vercel.app/](https://earmark-pi.vercel.app/)
+
+**Test mode:** [https://earmark-pi.vercel.app/#test](https://earmark-pi.vercel.app/#test)
 
 ## Quick start
 
@@ -36,7 +38,7 @@ Requires Node 20+ (`.nvmrc` is set to 20).
 | **Plain SVG chart**           | ~100 lines, no chart library, full control over the playhead that follows the audio.       |
 | **Web Speech API**            | Speaks the preamble so the demo works end to end without sight.                            |
 | **Vitest**                    | Protocol logic is pure TS, so it is unit-tested with no browser.                           |
-| **GitHub Pages via Actions**  | Push to `main` and the demo is live for user-study participants.                           |
+| **Vercel**                   | Hosts the live Earmark application.                                                       |
 
 Deliberately *not* included yet: a backend, auth, a database, a state library.
 Add them only when a feature needs them.
@@ -81,7 +83,6 @@ src/
   App.tsx          Shell with hash routing (# lesson, #playground)
 .github/workflows/
   ci.yml           lint + typecheck + test + build on every push / PR
-  deploy.yml       Build and publish to GitHub Pages on push to main
 ```
 
 Dependency direction: `types.ts` <- `data`, `audio`, `quiz` <- `components` <- `App`.
