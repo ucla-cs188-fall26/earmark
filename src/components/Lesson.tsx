@@ -19,7 +19,7 @@ import { getGraph } from '../data/graphs.ts'
 import { QUESTIONS, TEST_QUESTIONS } from '../data/questions.ts'
 import { checkAnswer, orderQuestions, scoreAnswers } from '../quiz/quiz.ts'
 import { INITIAL_LISTENING, listeningReducer } from '../quiz/listening.ts'
-import type { AnswerRecord, LessonPhase } from '../types.ts'
+import type { AnswerRecord, Graph, LessonPhase, Question } from '../types.ts'
 import { ProtocolSummary } from './ProtocolSummary.tsx'
 import { StoppedPosition } from './StoppedPosition.tsx'
 import { DataTable } from './DataTable.tsx'
@@ -29,8 +29,11 @@ import { ProtocolIntro } from './ProtocolIntro.tsx'
 import { QuestionCard } from './QuestionCard.tsx'
 import { Results } from './Results.tsx'
 
-export function Lesson({ mode = 'tutorial', showGraph = mode !== 'test' }: { mode?: 'tutorial' | 'test'; showGraph?: boolean }) {
-  const questionBank = mode === 'test' ? TEST_QUESTIONS : QUESTIONS
+export interface LessonBank { questions: Question[]; graphs: Record<string, Graph> }
+
+export function Lesson({ mode = 'tutorial', showGraph = mode !== 'test', bank }: { mode?: 'tutorial' | 'test'; showGraph?: boolean; bank?: LessonBank }) {
+  const questionBank = bank?.questions ?? (mode === 'test' ? TEST_QUESTIONS : QUESTIONS)
+  const lookup = (id: string) => bank?.graphs[id] ?? getGraph(id)
 
   const [questions, setQuestions] = useState(() => orderQuestions(questionBank))
   const [phase, setPhase] = useState<LessonPhase>({ kind: 'intro' })
@@ -46,7 +49,7 @@ export function Lesson({ mode = 'tutorial', showGraph = mode !== 'test' }: { mod
   const player = usePlayer()
 
   const question = phase.kind === 'question' ? questions[phase.index] : null
-  const graph = question ? getGraph(question.graphId) : null
+  const graph = question ? lookup(question.graphId) : null
   const sonification = useMemo(() => (graph ? sonify(graph) : null), [graph])
   const current = answers.find((a) => a.questionId === question?.id) ?? null
 
